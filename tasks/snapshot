@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+# Vault Playground snapshot
+#
+# This script creates a snapshot in the local cache ($HOME/.vault-playground/snapshots) that by default is named with a
+# timestamp but also supports vanity naming via an environment variable
+#
+
+vp_snapshot_cache=$HOME/.vault-playground/snapshots
+vp_network_name=vp
+timestamp=$(date +%Y-%m-%d-%H-%M-%S)
+
+: "${VP_SNAPSHOT_NAME:=$timestamp}"
+
+if [ ! $(docker network ls -f name=${vp_network_name} -q) ]; then
+  echo "There is nothing running to snapshot. Have you initialized an environment with init?"
+  exit 0
+fi
+
+mkdir -p ${vp_snapshot_cache}
+
+short_vault_id=$(docker ps -q -f name=vp-vault1)
+snap_name=${short_vault_id}-${VP_SNAPSHOT_NAME}.snap
+
+docker exec vp-consul1 consul snapshot save /tmp/${snap_name} && echo "Wrote snapshot to $vp_snapshot_cache/$snap_name"
+docker container cp vp-consul1:/tmp/${snap_name} ${vp_snapshot_cache}

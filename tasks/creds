@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# Vault Playground
+#
+# This is a helper task that looks in the cache for any initialization dumps from the currently running Vault instance
+# and outputs them to the screen.
+#
+
+vp_init_cache=$HOME/.vault-playground/init_dumps
+
+vault_short_id=$(docker ps -q -f name=vp-vault1)
+vault_init_dump_path=${vp_init_cache}/${vault_short_id}.txt
+if [ -e "${vault_init_dump_path}" ]; then
+  echo "Found cached creds file: $vault_init_dump_path"
+  cat ${vault_init_dump_path}
+else
+  echo "No cached initialization credentials could be found for the currently running vault instance, or no vault instance is running."
+fi

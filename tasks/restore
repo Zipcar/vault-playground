@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+# Vault Playground restore
+#
+# Unless a snapshot file is specified this script will list all snapshots in its cache and prompt the user to select one.
+# Once the snapshot is restored the script will attempt to locate a valid initialization dump file in its cache if one
+# was not passed in. If it is able to find one it will attempt to automatically unseal Vault. If it is unable to do so it
+# will notify the user who would have to manually unseal the Vault instances. Even if the Vault is not able to be unsealed
+# the snapshot will still be restored.
+#
+
+vp_init_cache=$HOME/.vault-playground/init_dumps
+vp_snapshot_cache=$HOME/.vault-playground/snapshots
+vp_network_name=vp
+
+: "${VP_SNAPSHOT:=}"
+: "${VP_INIT_DUMP:=}"
+
+if [ $(docker network ls -f name=${vp_network_name} -q) ]; then
+  echo "Looks like there's currently some vault playground infrastructure running in Docker's $vp_network_name network."
+  echo "Before running restore please run destroy. DO NOT RUN PURGE."
+  exit 0
+fi
+
+if [ ! -d "${vp_snapshot_cache}" ] && [ ! ${VP_SNAPSHOT} ]; then
+  echo "No snapshots available in snapshot cache: $vp_snapshot_cache, or passed in via VAULT_PLAYGROUND_SNAPSHOT."
+  echo "Have you taken any snapshots?"
+  exit 0
+fi
+
+declare snapshot_path
+
+if [ ${VP_SNAPSHOT} ]; then
+  snapshot_path=${VP_SNAPSHOT}
+else
+  options=(${vp_snapshot_cache}/*)
+
+  PS3="Please select a snapshot to restore: "
+  select snapshot_path in "${options[@]}" "Cancel" ; do
+    if (( REPLY == 1 + ${#options[@]} )) ; then
+      exit 0
+    elif (( REPLY > 0 && REPLY <= ${#options[@]} )) ; then
+      echo "Restoring $snapshot_path..."
+      break
+    else
+      echo "Restore cancelled..."
+      exit 0
+    fi
+  done
+fi
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+VP_AUTO_INIT=false ${DIR}/init
+
+docker container cp ${snapshot_path} vp-consul1:/tmp/to_restore.snap
+docker exec vp-consul1 consul snapshot restore /tmp/to_restore.snap
+
+declare snapshot_keys
+
+vault_short_id=$(basename ${snapshot_path} | cut -c1-12)
+
+if [ -e "${vp_init_cache}/${vault_short_id}.txt" ]; then
+  snapshot_keys=${vp_init_cache}/${vault_short_id}.txt
+elif [ ${VP_INIT_DUMP} ]; then
+  snapshot_keys=${VP_INIT_DUMP}
+else
+  echo "A Vault initialization key dump was not passed in with VAULT_PLAYGROUND_INIT_DUMP or found in the local cache $vp_init_cache"
+  echo "Vault will need to be manually unsealed. Hope you've got the keys!"
+fi
+
+if [ ${snapshot_keys} ]; then
+  head -3 ${snapshot_keys} | sed 's/ //g' | awk -F: '{print $2}' | xargs -I % docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vp-vault1 vault unseal %
+
+  # If vault is in HA mode we should unseal that node too
+  if [ $(docker ps -q -f name=vp-vault2) ]; then
+    sleep 2s && head -3 ${snapshot_keys} | awk -F: '{print $2}' | xargs -I % docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vp-vault2 vault unseal %
+  fi
+
+  docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vp-vault1 vault status
+
+  # Establish a new base init dump based on previous init dump
+  new_vault_short_id=$(docker ps -q -f name=vp-vault1)
+  new_init_dump_path=${vp_init_cache}/${new_vault_short_id}.txt
+  cp ${snapshot_keys} ${new_init_dump_path}
+  echo "Vault Initialization information dumped to: $new_init_dump_path"
+  grep Root ${new_init_dump_path}
+fi

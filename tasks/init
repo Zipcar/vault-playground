@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Vault Playground init
+#
+# This script creates a dedicated docker network (called vp) and spins up the configured number of Vault and Consul servers.
+# By default this also initializes and unseals Vault automatically so you can use it immediately. You can connect to Consul
+# from http://localhost:8500 and communicate with Vault through Docker exec or the Vault CLI.
+#
+# This file is meant to be used for local testing and development. The flow and architecture of this setup is meant to
+# mirror production, but certain behaviors have been added for developer convenience that would be inappropriate in a
+# production environment; for example: writing out the unseal keys to a file and automating the unsealing of vault.
+#
+
+vp_init_cache=$HOME/.vault-playground/init_dumps
+vp_network_name=vp
+
+# Environment variables needed by this script defaulted for local use
+: "${VP_AUTO_INIT:=true}" # If true, after launching Vault also runs init, caches the resulting keys, and automatically unseals Vault
+: "${VP_HA_MODE:=true}" # If true will spin up a second Vault server ready to run as a standby. Unless AUTO_INIT_VALUE is true this server will need to be manually unsealed to enter standby mode
+: "${VP_CONSUL_CLUSTER_SIZE:=3}" # How many Consul servers do you need?
+: "${VP_CONSUL_PORT:=8500}" # The port on your host machine where you can access Consul's web-ui
+: "${VP_VAULT_PORT:=8200}" # The port on your host machine where you can talk to the first vault container. Any HA Vault nodes will forward a random port number.
+
+if [ $(docker network ls -f name=${vp_network_name} -q) ]; then
+  echo "Looks like there's currently some vault playground infrastructure running in Docker's $vp_network_name network, try running destroy first."
+  exit 0
+fi
+
+mkdir -p ${vp_init_cache}
+
+# Create Docker network for testing
+docker network create --driver bridge ${vp_network_name} 2>/dev/null || echo ""
+
+# Spin up consul to back vault and then spin up vault.
+docker run -d -p ${VP_CONSUL_PORT}:8500 --network ${vp_network_name} -e CONSUL_BIND_INTERFACE=eth0 --name vp-consul1 consul && docker run -d -p ${VP_VAULT_PORT}:8200 --cap-add=IPC_LOCK --network ${vp_network_name} --name vp-vault1 -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"consul": {"path": "/vault/", "check_timeout": "5s", "max_parallel": "128", "address": "http://vp-consul1:8500", "cluster_addr": "http://vp-vault1:8200", "api_addr": "http://vp-vault1:8200"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
+
+if [ ${VP_HA_MODE} == "true" ]; then
+  # The initial sleep is to prevent race conditions where the first vault's DNS entry isn't ready in Docker yet
+  sleep 2s && docker run -d -P --cap-add=IPC_LOCK --network ${vp_network_name} --name vp-vault2 -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"consul": {"path": "/vault/", "check_timeout": "5s", "max_parallel": "128", "address": "http://vp-consul1:8500", "cluster_addr": "http://vp-vault2:8200", "api_addr": "http://vp-vault2:8200"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
+fi
+
+# Give vault a couple of seconds to start before initializing and unsealing
+# It's a bad idea to persist the unseal info locally and automate the unsealing of vault in production, in dev it's fine.
+if [ ${VP_AUTO_INIT} == "true" ]; then
+  short_vault_id=$(docker ps -q -f name=vp-vault1)
+  vault_init_dump_path=${vp_init_cache}/${short_vault_id}.txt
+
+  sleep 2s && docker exec vp-vault1 vault init > ${vault_init_dump_path}
+  head -3 ${vault_init_dump_path} | sed 's/ //g' | awk -F: '{print $2}' | xargs -I % docker exec vp-vault1 vault unseal %
+
+  # If vault is in HA mode we should unseal that node too
+  if [ $(docker ps -q -f name=vp-vault2) ]; then
+    sleep 2s && head -3 ${vault_init_dump_path} | awk -F: '{print $2}' | xargs -I % docker exec vp-vault2 vault unseal %
+  fi
+
+fi
+
+# Launch the requested number of consul servers
+for (( i=1; i<=$VP_CONSUL_CLUSTER_SIZE; i++ ))
+do
+  if [ $(docker ps -q -f name=vp-consul${i}) ]; then
+    echo "Scaling Consul: Server #$i exists"
+  else
+    echo "Scaling Consul: Launching server #$i"
+    docker run -d --name vp-consul${i} --network ${vp_network_name} -e CONSUL_BIND_INTERFACE=eth0 consul agent -dev -join=vp-consul1 server ${i} starts
+  fi
+done
+
+echo "Vault Playground Test Environment Deployed"
+echo "Consul Status:"
+docker exec vp-consul1 consul members
+
+echo "Vault Status:"
+
+if [ ${VP_AUTO_INIT} == "true" ]; then
+  docker exec vp-vault1 vault status
+  echo "Vault Initialization information dumped to: ${vault_init_dump_path}"
+  grep Root ${vault_init_dump_path}
+else
+  echo "Auto initialization of Vault was disabled... no status to report."
+fi
+
+echo "Vault is now running at: http://127.0.0.1:$VP_VAULT_PORT set your host's VAULT_ADDR environment variable to communicate directly with it using the Vault CLI."
+
+#docker run -d -P --network vault-playground --name vp-postgres1 -e POSTGRES_PASSWORD=password123 postgres:9.5

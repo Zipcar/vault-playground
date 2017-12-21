@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+vp_network_name=vp
+
+docker ps -f network=$vp_network_name

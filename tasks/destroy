@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# Vault Playground destroy
+#
+# This script terminates and removes all containers deployed in the Vault Playground docker network (vp).
+#
+
+vp_network_name=vp
+
+containers_to_destroy=$(docker ps -qa --no-trunc -f network=${vp_network_name})
+
+if [ ${#containers_to_destroy} != 0 ]; then
+  docker rm -f ${containers_to_destroy}
+  docker network rm ${vp_network_name}
+else
+  echo "No containers found in network or network does not exist. Maybe everything was already destroyed?"
+fi
+
+echo "To purge all cached data run the purge script"
