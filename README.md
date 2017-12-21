@@ -110,11 +110,14 @@ Generate a custom named snapshot with an environment variable: `VP_SNAPSHOT_NAME
   - `VP_SNAPSHOT` (empty string) Path to the Consul snapshot to restore. If this is blank, restore will list all the snapshots in its cache (`$HOME/.vault-playground/snapshots`).
   - `VP_INIT_DUMP` (empty string) Path to a file containing the output of the Vault initialization command. If this file doesn't exist, restore will check it's cache (`$HOME/.vault-playground/init_dumps`) if it finds nothing it will still restore the snapshot, but leave Vault sealed.
 
+**Dependencies**
+  - `init` This script calls out to init, setting `VP_AUTO_INIT=false` to setup a clean cluster before running the restore 
+  
 Unless a snapshot file is specified this script will list all snapshots in its cache and prompt the user to select one. 
 Once the snapshot is restored the script will attempt to locate a valid initialization dump file in its cache if one was 
 not passed in. If it is able to find one it will attempt to automatically unseal Vault. If it is unable to do so it will
 notify the user who would have to manually unseal the Vault instances. Even if the Vault is not able to be unsealed the 
-snapshot will still be restored.
+snapshot will still be restored. 
 
 ### creds
 
