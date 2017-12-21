@@ -80,5 +80,3 @@ else
 fi
 
 echo "Vault is now running at: http://127.0.0.1:$VP_VAULT_PORT set your host's VAULT_ADDR environment variable to communicate directly with it using the Vault CLI."
-
-#docker run -d -P --network vault-playground --name vp-postgres1 -e POSTGRES_PASSWORD=password123 postgres:9.5
