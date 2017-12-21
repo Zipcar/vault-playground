@@ -28,7 +28,7 @@ Vault with known data you can test partial revocations of secrets, tokens, and l
 ### Automation Tooling
 If you're an operator or developer writing tests for your infrastructure tooling it's helpful to run them against a realistic environment. The Vault Playground can be 
 deployed onto a CI server and used to restore known states and run tests while also making it quick and easy to burn everything down and create a brand new environment
-for each bach of tests.
+for each batch of tests.
 
 ## Prerequisites
   - [Docker](https://www.docker.com/get-docker) - This uses Docker to run Vault and Consul in containers
