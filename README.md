@@ -12,7 +12,7 @@ who needs a place to test failover scenarios, application resiliency, break glas
 your life.
 
 ### Application Development
-Besides letting developers test what would happen in the event of a partial or complete outage of Vault/Consul. Vault Playground also makes it possible for 
+Besides letting developers test what would happen in the event of a partial or complete outage of Vault/Consul, Vault Playground also makes it possible for 
 developers to run their applications against a local Vault instance that is seeded with relevant local secrets. Because the data inside a Consul snapshot is
 encrypted, snapshot files could be committed into source control. The keys needed to unseal the Vault would still need to be passed out of band if the snapshot 
 contained any sensitive data. If it didn't then the initialization file could be committed as well. _This feature is meant to help with local secrets only, 
