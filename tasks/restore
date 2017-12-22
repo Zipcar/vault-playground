@@ -50,6 +50,7 @@ else
 fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 VP_AUTO_INIT=false ${DIR}/init
 
 docker container cp ${snapshot_path} vp-consul1:/tmp/to_restore.snap
@@ -64,7 +65,7 @@ if [ -e "${vp_init_cache}/${vault_short_id}.txt" ]; then
 elif [ ${VP_INIT_DUMP} ]; then
   snapshot_keys=${VP_INIT_DUMP}
 else
-  echo "A Vault initialization key dump was not passed in with VAULT_PLAYGROUND_INIT_DUMP or found in the local cache $vp_init_cache"
+  echo "A Vault initialization key dump was not passed in with VP_INIT_DUMP or found in the local cache $vp_init_cache"
   echo "Vault will need to be manually unsealed. Hope you've got the keys!"
 fi
 
