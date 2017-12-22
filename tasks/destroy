@@ -7,6 +7,11 @@
 
 vp_network_name=vp
 
+if [ ! $(command -v docker) ]; then
+  echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
+  exit 1
+fi
+
 containers_to_destroy=$(docker ps -qa --no-trunc -f network=${vp_network_name})
 
 if [ ${#containers_to_destroy} != 0 ]; then

@@ -6,21 +6,44 @@
 # timestamp but also supports vanity naming via an environment variable
 #
 
+declare short_vault_id
+
 vp_snapshot_cache=$HOME/.vault-playground/snapshots
 vp_network_name=vp
 timestamp=$(date +%Y-%m-%d-%H-%M-%S)
+default_consul_target=http://127.0.0.1:8500
 
 : "${VP_SNAPSHOT_NAME:=$timestamp}"
+: "${VP_CONSUL_TARGET:=$default_consul_target}"
+: "${VP_CONSUL_DATACENTER:=dc1}"
 
-if [ ! $(docker network ls -f name=${vp_network_name} -q) ]; then
-  echo "There is nothing running to snapshot. Have you initialized an environment with init?"
+if [ ! $(command -v docker) ]; then
+  echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
+  exit 1
+fi
+
+if [ ! $(command -v curl) ]; then
+  echo -e "\ncurl not found! It must be installed before proceeding: https://curl.haxx.se/\n"
+  exit 1
+fi
+
+
+# Make sure we can access Consul
+if [ $(curl -s -o /dev/null -w "%{http_code}" ${VP_CONSUL_TARGET}/v1/health/service/consul) != 200 ]; then
+  echo "Can't access Consul at $VP_CONSUL_TARGET, nothing to snapshot."
   exit 0
 fi
 
 mkdir -p ${vp_snapshot_cache}
 
-short_vault_id=$(docker ps -q -f name=vp-vault1)
-snap_name=${short_vault_id}-${VP_SNAPSHOT_NAME}.snap
+# If this is pointed at a local Docker instance it will prepend the snapshot with the instance id of vault so it can be auto restored.
+docker_vault_id=$(docker ps -q -f name=vp-vault1)
+if [ ${VP_CONSUL_TARGET} == ${default_consul_target} ] && [ ${docker_vault_id} ]; then
+  short_vault_id=${docker_vault_id}-
+fi
 
-docker exec vp-consul1 consul snapshot save /tmp/${snap_name} && echo "Wrote snapshot to $vp_snapshot_cache/$snap_name"
-docker container cp vp-consul1:/tmp/${snap_name} ${vp_snapshot_cache}
+snap_name=${short_vault_id}${VP_SNAPSHOT_NAME}.tgz
+
+curl ${VP_CONSUL_TARGET}/v1/snapshot?dc=${VP_CONSUL_DATACENTER} -o ${vp_snapshot_cache}/${snap_name}
+
+echo "Wrote snapshot to $vp_snapshot_cache/$snap_name"

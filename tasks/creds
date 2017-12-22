@@ -8,11 +8,21 @@
 
 vp_init_cache=$HOME/.vault-playground/init_dumps
 
+if [ ! $(command -v docker) ]; then
+  echo -e "\ndocker not found! It must be installed before proceeding\n"
+  exit 1
+fi
+
+if [ ! $(command -v jq) ]; then
+  echo -e "\njq not found! It must be installed before proceeding\n"
+  exit 1
+fi
+
 vault_short_id=$(docker ps -q -f name=vp-vault1)
-vault_init_dump_path=${vp_init_cache}/${vault_short_id}.txt
+vault_init_dump_path=${vp_init_cache}/${vault_short_id}.json
 if [ -e "${vault_init_dump_path}" ]; then
   echo "Found cached creds file: $vault_init_dump_path"
-  cat ${vault_init_dump_path}
+  jq . ${vault_init_dump_path}
 else
   echo "No cached initialization credentials could be found for the currently running vault instance, or no vault instance is running."
 fi

@@ -12,20 +12,42 @@
 vp_init_cache=$HOME/.vault-playground/init_dumps
 vp_snapshot_cache=$HOME/.vault-playground/snapshots
 vp_network_name=vp
+default_vault_target=http://127.0.0.1:8200
+default_consul_target=http://127.0.0.1:8500
 
+: "${VP_CONSUL_TARGET:=$default_consul_target}"
+: "${VP_VAULT_TARGETS:=}"
 : "${VP_SNAPSHOT:=}"
 : "${VP_INIT_DUMP:=}"
 
-if [ $(docker network ls -f name=${vp_network_name} -q) ]; then
-  echo "Looks like there's currently some vault playground infrastructure running in Docker's $vp_network_name network."
-  echo "Before running restore please run destroy. DO NOT RUN PURGE."
+vault_targets=(${VP_VAULT_TARGETS});
+
+if [ $(docker network ls -f name=${vp_network_name} -q) ] && [ ${VP_CONSUL_TARGET} == ${default_consul_target} ]; then
+  echo "Looks like you're trying to run a local restore but there's currently some Vault Playground infrastructure"
+  echo "running in Docker's $vp_network_name network. Before running restore please run destroy. DO NOT RUN PURGE."
+  echo "You can also restore to a remote Consul server by passing in VP_CONSUL_TARGET"
   exit 0
 fi
 
 if [ ! -d "${vp_snapshot_cache}" ] && [ ! ${VP_SNAPSHOT} ]; then
-  echo "No snapshots available in snapshot cache: $vp_snapshot_cache, or passed in via VAULT_PLAYGROUND_SNAPSHOT."
+  echo "No snapshots available in snapshot cache: $vp_snapshot_cache, or passed in via VP_SNAPSHOT."
   echo "Have you taken any snapshots?"
   exit 0
+fi
+
+if [ ! $(command -v docker) ]; then
+  echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
+  exit 1
+fi
+
+if [ ! $(command -v jq) ]; then
+  echo -e "\njq not found! It must be installed before proceeding: https://stedolan.github.io/jq/\n"
+  exit 1
+fi
+
+if [ ! $(command -v curl) ]; then
+  echo -e "\ncurl not found! It must be installed before proceeding: https://curl.haxx.se/\n"
+  exit 1
 fi
 
 declare snapshot_path
@@ -51,38 +73,49 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-VP_AUTO_INIT=false ${DIR}/init
+# Only initialize an environment if we're working locally and an external Consul node was not targeted
+if [ ${VP_CONSUL_TARGET} == ${default_consul_target} ]; then
+  VP_AUTO_INIT=false ${DIR}/init
+fi
 
-docker container cp ${snapshot_path} vp-consul1:/tmp/to_restore.snap
-docker exec vp-consul1 consul snapshot restore /tmp/to_restore.snap
+curl --request PUT --data-binary @${snapshot_path} ${VP_CONSUL_TARGET}/v1/snapshot
 
-declare snapshot_keys
+declare snapshot_init_dump
 
+# This short ID will be valid for local Docker inits only
 vault_short_id=$(basename ${snapshot_path} | cut -c1-12)
 
-if [ -e "${vp_init_cache}/${vault_short_id}.txt" ]; then
-  snapshot_keys=${vp_init_cache}/${vault_short_id}.txt
+if [ -e "${vp_init_cache}/${vault_short_id}.json" ]; then
+  snapshot_init_dump=${vp_init_cache}/${vault_short_id}.json
 elif [ ${VP_INIT_DUMP} ]; then
-  snapshot_keys=${VP_INIT_DUMP}
+  snapshot_init_dump=${VP_INIT_DUMP}
 else
   echo "A Vault initialization key dump was not passed in with VP_INIT_DUMP or found in the local cache $vp_init_cache"
   echo "Vault will need to be manually unsealed. Hope you've got the keys!"
 fi
 
-if [ ${snapshot_keys} ]; then
-  head -3 ${snapshot_keys} | sed 's/ //g' | awk -F: '{print $2}' | xargs -I % docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vp-vault1 vault unseal %
 
-  # If vault is in HA mode we should unseal that node too
-  if [ $(docker ps -q -f name=vp-vault2) ]; then
-    sleep 2s && head -3 ${snapshot_keys} | awk -F: '{print $2}' | xargs -I % docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vp-vault2 vault unseal %
+if [ ${snapshot_init_dump} ]; then
+  # If Vault targets were passed in then connect to each targets unseal API endpoint
+  # It's not recommended to use this auto unsealing behavior for any production Vault
+  if [ ${VP_VAULT_TARGETS} ]; then
+    for ((i=0; i<${#vault_targets[@]}; ++i)); do
+      jq -r '.keys[]' ${snapshot_init_dump} | xargs -I % curl --request PUT  -H "Content-Type: application/json" -d '{"key": "%"}' ${vault_targets[$i]}/v1/sys/unseal
+      curl ${vault_targets[$i]}/v1/sys/health
+    done
+  else
+    containers=$(docker ps --filter name=vp-vault | awk '{if(NR>1) print $NF}')
+    for container in ${containers}
+    do
+      jq -r '.keys[]' ${snapshot_init_dump} | xargs -I % docker exec ${container} vault unseal %
+    done
   fi
-
-  docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vp-vault1 vault status
 
   # Establish a new base init dump based on previous init dump
   new_vault_short_id=$(docker ps -q -f name=vp-vault1)
-  new_init_dump_path=${vp_init_cache}/${new_vault_short_id}.txt
-  cp ${snapshot_keys} ${new_init_dump_path}
+  new_init_dump_path=${vp_init_cache}/${new_vault_short_id}.json
+  cp ${snapshot_init_dump} ${new_init_dump_path}
   echo "Vault Initialization information dumped to: $new_init_dump_path"
-  grep Root ${new_init_dump_path}
+  echo "Root Token:"
+  jq -r '.root_token' ${new_init_dump_path}
 fi
