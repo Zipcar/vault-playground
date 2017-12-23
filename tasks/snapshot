@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Vault Playground V1.0.0 snapshot
+# Vault Playground V2.0.0 snapshot
 #
 # This script creates a snapshot in the local cache ($HOME/.vault-playground/snapshots) that by default is named with a
 # timestamp but also supports vanity naming via an environment variable

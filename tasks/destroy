@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Vault Playground V1.0.0 destroy
+# Vault Playground V2.0.0 destroy
 #
 # This script terminates and removes all containers deployed in the Vault Playground docker network (vp).
 #
