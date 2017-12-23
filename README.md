@@ -1,8 +1,10 @@
-# Vault Playground V1.0.0
+# Vault Playground V2.0.0
 
 This repo is meant to make it easier for developers, operators, and CI servers to work locally with a production-like Vault environment.
 The Makefile contained in this repository will allow users to spin up (by default) a Consul cluster with 3 nodes, and 2 Vault servers running
 in HA mode. It also provides helpers for snapshotting the state of the cluster and restoring it from a cached or passed in Consul snapshot.
+By overriding the default values for task environment variables you can also snapshot and restore to or from remote Vault clusters. 
+This is meant for convenience during development only; it's still considered a bad practice to automate the unsealing of a production Vault cluster.
 
 ## Use Cases
 
@@ -16,7 +18,7 @@ Besides letting developers test what would happen in the event of a partial or c
 developers to run their applications against a local Vault instance that is seeded with relevant local secrets. Because the data inside a Consul snapshot is
 encrypted, snapshot files could be committed into source control. The keys needed to unseal the Vault would still need to be passed out of band if the snapshot 
 contained any sensitive data. If it didn't then the initialization file could be committed as well. _This feature is meant to help with local secrets only, 
-it's a bad idea to commit real secrets into source control._
+it's still a bad idea to commit real secrets into source control EVEN WHEN THEY'RE ENCRYPTED._
 
 ### Failover Scenarios
 If you're an operator that's new to Vault and Consul you can use the Vault Playground to test various data center failure models and practice manual restoration.
@@ -33,7 +35,9 @@ for each batch of tests.
 ## Prerequisites
   - [Docker](https://www.docker.com/get-docker) - This uses Docker to run Vault and Consul in containers
   - Network access to the [Docker Hub](https://hub.docker.com/) - On first init this calls out to get official versions of [Consul](https://hub.docker.com/_/consul/) and [Vault](https://hub.docker.com/_/vault/) if Docker doesn't have them cached locally.
-
+  - [curl](https://curl.haxx.se/) A command line tool for making network requests, usually installed on most systems by default.
+  - [jq](https://stedolan.github.io/jq/) A lightweight command line tool for parsing JSON. Available on most systems and easy to install on others.
+  
 ## Getting Started
 
 1. Clone this repo to the directory of your choice
@@ -53,7 +57,7 @@ status                         Displays the current state of the vault-playgroun
 ## Talking To Vault
 
 This tool is meant to be run locally and make it easier to test and debug Vault workflows, so it _does not_ enable TLS. As a result
-you'll have to explicitly tell the Vault CLI to connect over HTTP. Fortunately Vault supports the `VAULT_ADDR` environment variable. 
+you'll have to explicitly tell the Vault CLI to connect over HTTP. Fortunately, Vault supports the `VAULT_ADDR` environment variable. 
 Just set it to `http://127.0.0.1:8200` and you should be all set. If you're using `docker exec` this environment variable has already
 been set inside the Vault instances.
 
@@ -81,13 +85,14 @@ vault status
 
 Make was used to provide a simple and portable interface, but all of the tasks in this repo have been written as (mostly) 
 self contained shell scripts that could be run independently of Make. The only interdependency between these scripts is 
-that restore calls init. Many of the tasks can have their behavior altered by environment variables.
+that restore will call init if it detects that it's pointed at a local Consul server. Many of the tasks can have their 
+behavior altered by environment variables.
 
 ### init
 
 **Environment**
   - `VP_AUTO_INIT` (true) If true, after launching Vault the script will also run init, cache the resulting keys, and automatically unseal Vault
-  - `VP_HA_MODE` (true) If true will spin up a second Vault server ready to run as a standby. Unless VP_AUTO_INIT is true this server will need to be manually unsealed to enter standby mode
+  - `VP_VAULT_CLUSTER_SIZE` (2) The script will launch this many Vault nodes clustered in HA mode.
   - `VP_CONSUL_CLUSTER_SIZE` (3) How many Consul servers do you need?
   - `VP_CONSUL_PORT` (8500) The port on your host machine where you can access Consul
   - `VP_VAULT_PORT` (8200) The port on your host machine where you can access Vault
@@ -96,22 +101,36 @@ This script creates a dedicated docker network (called `vp`) and spins up the co
 By default this also initializes and unseals Vault automatically so you can use it immediately. You can connect to Consul
 from [http://localhost:8500](http://localhost:8500) and communicate with Vault through Docker exec or the Vault CLI.
 
+If `VP_AUTO_INIT` is true, the script will cache the output of the initialize API call locally (`$HOME/.vault-playground/init_dumps`) in a file 
+named after the Docker ID of the main vault server. 
+
 ### snapshot
 
 **Environment**
   - `VP_SNAPSHOT_NAME` (timestamp of the form: `%Y-%m-%d-%H-%M-%S`) Snapshots are named using the ID of the active Vault instance concatenated with this value. 
-
+  - `VP_CONSUL_TARGET` - (`http://127.0.0.1:8500` The Docker node) The Consul server that should be snapshotted
+  - `VP_CONSUL_DATACENTER` - (dc1) The Consul data center that should be snapshotted, locally this will almost always be the default. 
+  
 This script creates a snapshot in the local cache (`$HOME/.vault-playground/snapshots`) that by default is named with a timestamp.
 Generate a custom named snapshot with an environment variable: `VP_SNAPSHOT_NAME=the-one-with-postgres-secrets make snapshot`
+
+In addition to snapshotting the local Docker Cluster, you can also point this script at a running external Consul server 
+to pull down and cache a local snapshot:
+
+```
+VP_CONSUL_TARGET=https://myconsul.biz:8500 VP_SNAPSHOT_NAME=myconsul-biz-12-31-2017 make snapshot
+```
 
 ### restore
 
 **Environment**
   - `VP_SNAPSHOT` (empty string) Path to the Consul snapshot to restore. If this is blank, restore will list all the snapshots in its cache (`$HOME/.vault-playground/snapshots`).
   - `VP_INIT_DUMP` (empty string) Path to a file containing the output of the Vault initialization command. If this file doesn't exist, restore will check it's cache (`$HOME/.vault-playground/init_dumps`) if it finds nothing it will still restore the snapshot, but leave Vault sealed.
+  - `VP_CONSUL_TARGET` - (`http://127.0.0.1:8500` The Docker node) The Consul server that the snapshot should be restored to
+  - `VP_VAULT_TARGETS` - (all running Vault Playground Vault containers) A space delimited list of Vault servers that should be contacted for unsealing if an init dump file was provided or existed in the cache.
 
 **Dependencies**
-  - `init` This script calls out to init, setting `VP_AUTO_INIT=false` to setup a clean cluster before running the restore 
+  - `init` If the `VP_CONSUL_TARGET` variable has not been overridden this script calls out to init, setting `VP_AUTO_INIT=false` so it can setup a clean cluster before running the restore.
   
 Unless a snapshot file is specified this script will list all snapshots in its cache and prompt the user to select one. 
 Once the snapshot is restored the script will attempt to locate a valid initialization dump file in its cache if one was 
@@ -122,7 +141,7 @@ snapshot will still be restored.
 ### creds
 
 This is a helper task that looks in the cache for any initialization dumps from the currently running Vault instance and
-outputs them to the screen. 
+outputs them to the screen, allowing the user to see both the root and unseal keys for the currently running Vault.
 
 ### destroy
 

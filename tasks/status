@@ -2,4 +2,9 @@
 
 vp_network_name=vp
 
+if [ ! $(command -v docker) ]; then
+  echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
+  exit 1
+fi
+
 docker ps -f network=$vp_network_name

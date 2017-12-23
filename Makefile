@@ -1,4 +1,4 @@
-# Vault Playground V1.0.0 Makefile
+# Vault Playground V2.0.0 Makefile
 
 # Help Helper matches comments at the start of the task block so make help gives users information about each task
 .PHONY: help
@@ -26,7 +26,7 @@ restore: ## Restore previous Vault state by restoring a Consul snapshot
 	cd tasks && ./restore
 
 .PHONY: creds
-creds: ## Shows the root token and unseal keys for the currently running Vault instance if available in the local cache
+creds: ## Shows the root token and unseal keys for the currently running Vault instance cached
 	cd tasks && ./creds
 
 .PHONY: status
