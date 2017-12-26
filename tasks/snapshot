@@ -6,12 +6,13 @@
 # timestamp but also supports vanity naming via an environment variable
 #
 
+: "${VP_NETWORK_NAME:=vp}" # Namespace for the local Vault playground, used for network and container names
+
 declare short_vault_id
 
 vp_snapshot_cache=$HOME/.vault-playground/snapshots
-vp_network_name=vp
 timestamp=$(date +%Y-%m-%d-%H-%M-%S)
-default_consul_target=http://127.0.0.1:8500
+default_consul_target=http://127.0.0.1:$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8500/tcp") 0).HostPort}}' ${VP_NETWORK_NAME}-consul1)
 
 : "${VP_SNAPSHOT_NAME:=$timestamp}"
 : "${VP_CONSUL_TARGET:=$default_consul_target}"
@@ -37,7 +38,7 @@ fi
 mkdir -p ${vp_snapshot_cache}
 
 # If this is pointed at a local Docker instance it will prepend the snapshot with the instance id of vault so it can be auto restored.
-docker_vault_id=$(docker ps -q -f name=vp-vault1)
+docker_vault_id=$(docker ps -q -f name=${VP_NETWORK_NAME}-vault1)
 if [ ${VP_CONSUL_TARGET} == ${default_consul_target} ] && [ ${docker_vault_id} ]; then
   short_vault_id=${docker_vault_id}-
 fi

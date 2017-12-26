@@ -43,7 +43,8 @@ for each batch of tests.
 1. Clone this repo to the directory of your choice
 1. Run `make init` to setup your environment
 1. Run `make help` to see other available commands:
-```bash
+
+```text
 help                           Displays information about available make tasks
 init                           Spin up local Docker instances for all dependencies on a dedicated Docker network
 destroy                        Destroy local Docker instances and their Docker network
@@ -94,12 +95,15 @@ behavior altered by environment variables.
   - `VP_AUTO_INIT` (true) If true, after launching Vault the script will also run init, cache the resulting keys, and automatically unseal Vault
   - `VP_VAULT_CLUSTER_SIZE` (2) The script will launch this many Vault nodes clustered in HA mode.
   - `VP_CONSUL_CLUSTER_SIZE` (3) How many Consul servers do you need?
-  - `VP_CONSUL_PORT` (8500) The port on your host machine where you can access Consul
-  - `VP_VAULT_PORT` (8200) The port on your host machine where you can access Vault
   
 This script creates a dedicated docker network (called `vp`) and spins up the configured number of Vault and Consul servers. 
-By default this also initializes and unseals Vault automatically so you can use it immediately. You can connect to Consul
-from [http://localhost:8500](http://localhost:8500) and communicate with Vault through Docker exec or the Vault CLI.
+By default this also initializes and unseals Vault automatically so you can use it immediately. When the script completes
+it will output the addresses where Consul and Vault can be reached locally:
+
+```text
+Consul is now running at: http://127.0.0.1:32845
+Vault is now running at: http://127.0.0.1:32849 set your host's VAULT_ADDR environment variable to communicate directly with it using the Vault CLI.
+```
 
 If `VP_AUTO_INIT` is true, the script will cache the output of the initialize API call locally (`$HOME/.vault-playground/init_dumps`) in a file 
 named after the Docker ID of the main vault server. 
@@ -108,7 +112,7 @@ named after the Docker ID of the main vault server.
 
 **Environment**
   - `VP_SNAPSHOT_NAME` (timestamp of the form: `%Y-%m-%d-%H-%M-%S`) Snapshots are named using the ID of the active Vault instance concatenated with this value. 
-  - `VP_CONSUL_TARGET` - (`http://127.0.0.1:8500` The Docker node) The Consul server that should be snapshotted
+  - `VP_CONSUL_TARGET` - (The Vault Playground Consul node) The Consul server that should be snapshotted
   - `VP_CONSUL_DATACENTER` - (dc1) The Consul data center that should be snapshotted, locally this will almost always be the default. 
   
 This script creates a snapshot in the local cache (`$HOME/.vault-playground/snapshots`) that by default is named with a timestamp.
@@ -126,7 +130,7 @@ VP_CONSUL_TARGET=https://myconsul.biz:8500 VP_SNAPSHOT_NAME=myconsul-biz-12-31-2
 **Environment**
   - `VP_SNAPSHOT` (empty string) Path to the Consul snapshot to restore. If this is blank, restore will list all the snapshots in its cache (`$HOME/.vault-playground/snapshots`).
   - `VP_INIT_DUMP` (empty string) Path to a file containing the output of the Vault initialization command. If this file doesn't exist, restore will check it's cache (`$HOME/.vault-playground/init_dumps`) if it finds nothing it will still restore the snapshot, but leave Vault sealed.
-  - `VP_CONSUL_TARGET` - (`http://127.0.0.1:8500` The Docker node) The Consul server that the snapshot should be restored to
+  - `VP_CONSUL_TARGET` - (The Vault Playground Consul node) The Consul server that the snapshot should be restored to
   - `VP_VAULT_TARGETS` - (all running Vault Playground Vault containers) A space delimited list of Vault servers that should be contacted for unsealing if an init dump file was provided or existed in the cache.
 
 **Dependencies**

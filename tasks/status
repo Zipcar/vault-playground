@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-vp_network_name=vp
+: "${VP_NETWORK_NAME:=vp}" # Namespace for the local Vault playground, used for network and container names
 
 if [ ! $(command -v docker) ]; then
   echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
   exit 1
 fi
 
-docker ps -f network=$vp_network_name
+docker ps -f network=$VP_NETWORK_NAME
