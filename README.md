@@ -51,32 +51,28 @@ destroy                        Destroy local Docker instances and their Docker n
 snapshot                       Backup the state of Vault by taking a snapshot of Consul and storing it in the local cache
 purge                          Delete the local cache of snapshots and initialization keys
 restore                        Restore previous Vault state by restoring a Consul snapshot
-creds                          Shows the root token and unseal keys for the currently running Vault instance if available in the local cache
-status                         Displays the current state of the vault-playground network in Docker.
+creds                          Shows the root token and unseal keys for the currently running Vault instance cached
+status                         Displays the current state of the Vault Playground network in Docker.
+vault-leader                   Displays the address of the current Vault leader
 ```
 
 ## Talking To Vault
 
 This tool is meant to be run locally and make it easier to test and debug Vault workflows, so it _does not_ enable TLS. As a result
 you'll have to explicitly tell the Vault CLI to connect over HTTP. Fortunately, Vault supports the `VAULT_ADDR` environment variable. 
-Just set it to `http://127.0.0.1:8200` and you should be all set. If you're using `docker exec` this environment variable has already
-been set inside the Vault instances.
+If you're using `docker exec` this environment variable has already been set inside the Vault instances.
 
 ```bash
 docker exec vp-vault1 vault status
 ```
-or
+
+Locally, you can export it:
 
 ```bash
-VAULT_ADDR=http://127.0.0.1:8200 vault status
+export VAULT_ADDR=$(make vault-leader)
 ```
-
-or better still, export the variable in your session or persist it through your `.bash_rc` or `.bash_profile`:
-
-```bash
-export VAULT_ADDR=http://127.0.0.1:8200
-```
-and use Vault normally
+ 
+and use Vault as you normally would:
  
 ```bash
 vault status
@@ -92,6 +88,7 @@ behavior altered by environment variables.
 ### init
 
 **Environment**
+  - `VP_NETWORK_NAME` (vp) This is the name of the Docker network that will be created. This string will also prefix all container names. Essentially this is a namespace for Vault Playground.
   - `VP_AUTO_INIT` (true) If true, after launching Vault the script will also run init, cache the resulting keys, and automatically unseal Vault
   - `VP_VAULT_CLUSTER_SIZE` (2) The script will launch this many Vault nodes clustered in HA mode.
   - `VP_CONSUL_CLUSTER_SIZE` (3) How many Consul servers do you need?
@@ -111,6 +108,7 @@ named after the Docker ID of the main vault server.
 ### snapshot
 
 **Environment**
+  - `VP_NETWORK_NAME` (vp) This is the name of the Docker network any local containers are running on.
   - `VP_SNAPSHOT_NAME` (timestamp of the form: `%Y-%m-%d-%H-%M-%S`) Snapshots are named using the ID of the active Vault instance concatenated with this value. 
   - `VP_CONSUL_TARGET` - (The Vault Playground Consul node) The Consul server that should be snapshotted
   - `VP_CONSUL_DATACENTER` - (dc1) The Consul data center that should be snapshotted, locally this will almost always be the default. 
@@ -128,6 +126,7 @@ VP_CONSUL_TARGET=https://myconsul.biz:8500 VP_SNAPSHOT_NAME=myconsul-biz-12-31-2
 ### restore
 
 **Environment**
+  - `VP_NETWORK_NAME` (vp) This is the name of the Docker network any local containers are running on.
   - `VP_SNAPSHOT` (empty string) Path to the Consul snapshot to restore. If this is blank, restore will list all the snapshots in its cache (`$HOME/.vault-playground/snapshots`).
   - `VP_INIT_DUMP` (empty string) Path to a file containing the output of the Vault initialization command. If this file doesn't exist, restore will check it's cache (`$HOME/.vault-playground/init_dumps`) if it finds nothing it will still restore the snapshot, but leave Vault sealed.
   - `VP_CONSUL_TARGET` - (The Vault Playground Consul node) The Consul server that the snapshot should be restored to
@@ -144,12 +143,34 @@ snapshot will still be restored.
 
 ### creds
 
+**Environment**
+
+  - `VP_NETWORK_NAME` (vp) This is the name of the Docker network any local containers are running on.
+
 This is a helper task that looks in the cache for any initialization dumps from the currently running Vault instance and
 outputs them to the screen, allowing the user to see both the root and unseal keys for the currently running Vault.
 
 ### destroy
 
+**Environment**
+
+  - `VP_NETWORK_NAME` (vp) This is the name of the Docker network any local containers are running on.
+
 This script terminates and removes all containers deployed in the Vault Playground docker network (`vp`).
+
+### vault-leader
+
+**Environment**
+
+  - `VP_NETWORK_NAME` (vp) This is the name of the Docker network any local containers are running on.
+
+
+This script outputs the current leader and the port it's exporting on the host. Useful for setting the VAULT_ADDR 
+environment variable:
+
+```bash
+export VAULT_ADDR=$(make vault-leader)
+```
 
 ### purge
 

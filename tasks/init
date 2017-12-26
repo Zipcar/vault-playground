@@ -48,12 +48,6 @@ docker network create --driver bridge ${VP_NETWORK_NAME} 2>/dev/null || echo ""
 # Spin up consul to back vault and then spin up vault.
 docker run -d -P --network ${VP_NETWORK_NAME} -e CONSUL_BIND_INTERFACE=eth0 --name ${VP_NETWORK_NAME}-consul1 consul && docker run -d -P --cap-add=IPC_LOCK --network ${VP_NETWORK_NAME} --name ${VP_NETWORK_NAME}-vault1 -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"consul": {"path": "/vault/", "check_timeout": "5s", "max_parallel": "128", "address": "'"http://$VP_NETWORK_NAME-consul1:8500"'", "cluster_addr": "'"http://$VP_NETWORK_NAME-vault1:8200"'", "api_addr": "'"http://$VP_NETWORK_NAME-vault1:8200"'"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
 
-# Fetch the Vault port
-vp_vault_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8200/tcp") 0).HostPort}}' ${VP_NETWORK_NAME}-vault1)
-
-# Fetch the Consul port
-vp_consul_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8500/tcp") 0).HostPort}}' ${VP_NETWORK_NAME}-consul1)
-
 # Launch the requested number of Vault servers
 for (( i=2; i<=$VP_VAULT_CLUSTER_SIZE; i++ ))
 do
@@ -72,7 +66,9 @@ if [ ${VP_AUTO_INIT} == "true" ]; then
   short_vault_id=$(docker ps -q -f name=${VP_NETWORK_NAME}-vault1)
   vault_init_dump_path=${vp_init_cache}/${short_vault_id}.json
 
-  curl --request PUT  -H "Content-Type: application/json" -d "{\"secret_shares\":$vp_vault_shares, \"secret_threshold\":$vp_vault_threshold}" http://127.0.0.1:${vp_vault_port}/v1/sys/init > ${vault_init_dump_path}
+  # Fetch the local port
+  vp_vault1_local_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8200/tcp") 0).HostPort}}' ${VP_NETWORK_NAME}-vault1)
+  curl --request PUT  -H "Content-Type: application/json" -d "{\"secret_shares\":$vp_vault_shares, \"secret_threshold\":$vp_vault_threshold}" http://127.0.0.1:${vp_vault1_local_port}/v1/sys/init > ${vault_init_dump_path}
 
   # Unseal all Vault instances
   containers=$(docker ps --filter name=${VP_NETWORK_NAME}-vault | awk '{if(NR>1) print $NF}')
@@ -109,5 +105,7 @@ else
   echo "Auto initialization of Vault was disabled... no status to report."
 fi
 
-echo "Consul is now running at: http://127.0.0.1:$vp_consul_port"
-echo "Vault is now running at: http://127.0.0.1:$vp_vault_port set your host's VAULT_ADDR environment variable to communicate directly with it using the Vault CLI."
+echo "Vault is now running at:"
+docker ps -f name=${VP_NETWORK_NAME}-vault --format "{{.Names}}: http://{{printf \"%.13s\" .Ports}}"
+
+echo "Set your host's VAULT_ADDR environment variable to communicate directly with it using the Vault CLI."

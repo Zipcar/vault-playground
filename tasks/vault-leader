@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+: "${VP_NETWORK_NAME:=vp}" # Namespace for the local Vault playground, used for network and container names
+
+if [ ! $(docker network ls -f name=${VP_NETWORK_NAME} -q) ]; then
+  echo "Looks like there isn't any Vault Playground infrastructure running in Docker's $VP_NETWORK_NAME network, try running init first."
+  exit 0
+fi
+
+if [ ! $(command -v docker) ]; then
+  echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
+  exit 1
+fi
+
+# Ask Vault 1 (who the leader is)
+leader_container=$(docker exec ${VP_NETWORK_NAME}-vault1 vault status | grep -o https://[a-zA-Z0-9_.-]* | awk -F/ '{print $3}')
+leader_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8200/tcp") 0).HostPort}}' ${leader_container})
+
+echo "http://127.0.0.1:$leader_port"
