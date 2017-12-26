@@ -6,7 +6,7 @@
 # and outputs them to the screen.
 #
 
-: "${VP_NETWORK_NAME:=vp}" # Namespace for the local Vault playground, used for network and container names
+: "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 
 vp_init_cache=$HOME/.vault-playground/init_dumps
 
@@ -20,7 +20,7 @@ if [ ! $(command -v jq) ]; then
   exit 1
 fi
 
-vault_short_id=$(docker ps -q -f name=${VP_NETWORK_NAME}-vault1)
+vault_short_id=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)
 vault_init_dump_path=${vp_init_cache}/${vault_short_id}.json
 if [ -e "${vault_init_dump_path}" ]; then
   echo "Found cached creds file: $vault_init_dump_path"

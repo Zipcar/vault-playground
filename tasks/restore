@@ -9,11 +9,11 @@
 # the snapshot will still be restored.
 #
 
-: "${VP_NETWORK_NAME:=vp}" # Namespace for the local Vault playground, used for network and container names
+: "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 
 vp_init_cache=$HOME/.vault-playground/init_dumps
 vp_snapshot_cache=$HOME/.vault-playground/snapshots
-default_consul_target=http://127.0.0.1:$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8500/tcp") 0).HostPort}}' ${VP_NETWORK_NAME}-consul1)
+default_consul_target=http://127.0.0.1:$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8500/tcp") 0).HostPort}}' ${VP_NAMESPACE}-consul1)
 
 : "${VP_CONSUL_TARGET:=$default_consul_target}"
 : "${VP_VAULT_TARGETS:=}"
@@ -22,9 +22,9 @@ default_consul_target=http://127.0.0.1:$(docker inspect --format='{{(index (inde
 
 vault_targets=(${VP_VAULT_TARGETS});
 
-if [ $(docker network ls -f name=${VP_NETWORK_NAME} -q) ] && [ ${VP_CONSUL_TARGET} == ${default_consul_target} ]; then
+if [ $(docker network ls -f name=${VP_NAMESPACE} -q) ] && [ ${VP_CONSUL_TARGET} == ${default_consul_target} ]; then
   echo "Looks like you're trying to run a local restore but there's currently some Vault Playground infrastructure"
-  echo "running in Docker's $VP_NETWORK_NAME network. Before running restore please run destroy. DO NOT RUN PURGE."
+  echo "running in Docker's $VP_NAMESPACE network. Before running restore please run destroy. DO NOT RUN PURGE."
   echo "You can also restore to a remote Consul server by passing in VP_CONSUL_TARGET"
   exit 0
 fi
@@ -104,7 +104,7 @@ if [ ${snapshot_init_dump} ]; then
       curl ${vault_targets[$i]}/v1/sys/health
     done
   else
-    containers=$(docker ps --filter name=${VP_NETWORK_NAME}-vault | awk '{if(NR>1) print $NF}')
+    containers=$(docker ps --filter name=${VP_NAMESPACE}-vault | awk '{if(NR>1) print $NF}')
     for container in ${containers}
     do
       jq -r '.keys[]' ${snapshot_init_dump} | xargs -I % docker exec ${container} vault unseal %
@@ -112,7 +112,7 @@ if [ ${snapshot_init_dump} ]; then
   fi
 
   # Establish a new base init dump based on previous init dump
-  new_vault_short_id=$(docker ps -q -f name=${VP_NETWORK_NAME}-vault1)
+  new_vault_short_id=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)
   new_init_dump_path=${vp_init_cache}/${new_vault_short_id}.json
   cp ${snapshot_init_dump} ${new_init_dump_path}
   echo "Vault Initialization information dumped to: $new_init_dump_path"

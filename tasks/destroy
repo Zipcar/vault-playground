@@ -5,20 +5,20 @@
 # This script terminates and removes all containers deployed in the Vault Playground docker network (vp).
 #
 
-: "${VP_NETWORK_NAME:=vp}" # Namespace for the local Vault playground, used for network and container names
+: "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 
 if [ ! $(command -v docker) ]; then
   echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
   exit 1
 fi
 
-containers_to_destroy=$(docker ps -qa --no-trunc -f network=${VP_NETWORK_NAME})
+containers_to_destroy=$(docker ps -qa --no-trunc -f network=${VP_NAMESPACE})
 
 if [ ${#containers_to_destroy} != 0 ]; then
   docker rm -f ${containers_to_destroy}
-  docker network rm ${VP_NETWORK_NAME}
+  docker network rm ${VP_NAMESPACE}
 else
-  echo "No containers found in the $VP_NETWORK_NAME network or network does not exist. Maybe everything was already destroyed or you need to pass in VP_NETWORK_NAME?"
+  echo "No containers found in the $VP_NAMESPACE network or network does not exist. Maybe everything was already destroyed or you need to pass in VP_NAMESPACE?"
 fi
 
 echo "To purge all cached data run the purge script"
