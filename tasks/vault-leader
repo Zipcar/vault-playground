@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# Vault Playground V.2.1.0 vault-leader
+#
+# This script outputs the current leader and the port it's exporting on the host. Useful for setting the VAULT_ADDR
+# environment variable VAULT_ADDR=$(make vault-leader)
+#
+
 : "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 
 if [ ! $(docker network ls -f name=${VP_NAMESPACE} -q) ]; then
