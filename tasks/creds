@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
-# Vault Playground V2.0.0
+# Vault Playground V.2.1.0 creds
 #
 # This is a helper task that looks in the cache for any initialization dumps from the currently running Vault instance
 # and outputs them to the screen.
 #
+
+: "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 
 vp_init_cache=$HOME/.vault-playground/init_dumps
 
@@ -18,7 +20,7 @@ if [ ! $(command -v jq) ]; then
   exit 1
 fi
 
-vault_short_id=$(docker ps -q -f name=vp-vault1)
+vault_short_id=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)
 vault_init_dump_path=${vp_init_cache}/${vault_short_id}.json
 if [ -e "${vault_init_dump_path}" ]; then
   echo "Found cached creds file: $vault_init_dump_path"

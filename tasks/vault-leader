@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+# Vault Playground V.2.1.0 vault-leader
+#
+# This script outputs the current leader and the port it's exporting on the host. Useful for setting the VAULT_ADDR
+# environment variable VAULT_ADDR=$(make vault-leader)
+#
+
+: "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
+
+if [ ! $(docker network ls -f name=${VP_NAMESPACE} -q) ]; then
+  echo "Looks like there isn't any Vault Playground infrastructure running in Docker's $VP_NAMESPACE network, try running init first."
+  exit 0
+fi
+
+if [ ! $(command -v docker) ]; then
+  echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
+  exit 1
+fi
+
+# Ask Vault 1 (who the leader is)
+leader_container=$(docker exec ${VP_NAMESPACE}-vault1 vault status | grep -o https://[a-zA-Z0-9_.-]* | awk -F/ '{print $3}')
+leader_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8200/tcp") 0).HostPort}}' ${leader_container})
+
+echo "http://127.0.0.1:$leader_port"
