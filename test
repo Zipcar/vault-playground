@@ -3,3 +3,4 @@
 cd testing
 
 ./help
+./init-destroy
