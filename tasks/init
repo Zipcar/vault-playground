@@ -43,19 +43,38 @@ fi
 mkdir -p ${vp_init_cache}
 
 # Create Docker network for testing
-docker network create --driver bridge ${VP_NAMESPACE} 2>/dev/null || echo ""
+docker network create --driver bridge ${VP_NAMESPACE} >/dev/null 2>&1 || echo "Can't setup Docker network $VP_NAMESPACE"
 
+echo
+echo "Spin up initial Consul server:"
 # Spin up consul to back vault and then spin up vault.
-docker run -d -P --network ${VP_NAMESPACE} -e CONSUL_BIND_INTERFACE=eth0 --name ${VP_NAMESPACE}-consul1 consul && docker run -d -P --cap-add=IPC_LOCK --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-vault1 -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"consul": {"path": "/vault/", "check_timeout": "5s", "max_parallel": "128", "address": "'"http://$VP_NAMESPACE-consul1:8500"'", "cluster_addr": "'"http://$VP_NAMESPACE-vault1:8200"'", "api_addr": "'"http://$VP_NAMESPACE-vault1:8200"'"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
+docker run -d -P --network ${VP_NAMESPACE} -e CONSUL_BIND_INTERFACE=eth0 --name ${VP_NAMESPACE}-consul1 consul
+echo
+
+sleep 2s
 
 # Launch the requested number of Vault servers
-for (( i=2; i<=$VP_VAULT_CLUSTER_SIZE; i++ ))
+for (( i=1; i<=$VP_VAULT_CLUSTER_SIZE; i++ ))
 do
+  echo "Spin up Vault server #$i"
   if [ $(docker ps -q -f name=${VP_NAMESPACE}-vault${i}) ]; then
-    echo "Scaling Vault: Server #$i exists"
+    echo "  Server #$i already exists"
   else
-    echo "Scaling Vault: Launching server #$i"
-    docker run -d -P --cap-add=IPC_LOCK --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-vault2 -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"consul": {"path": "/vault/", "check_timeout": "5s", "max_parallel": "128", "address": "'"http://$VP_NAMESPACE-consul1:8500"'", "cluster_addr": "'"http://$VP_NAMESPACE-vault$i:8200"'", "api_addr": "'"http://$VP_NAMESPACE-vault$i:8200"'"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
+    docker run -d -P --cap-add=IPC_LOCK --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-vault${i} -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"consul": {"path": "vault/", "check_timeout": "5s", "max_parallel": "128", "address": "'"http://$VP_NAMESPACE-consul1:8500"'", "cluster_addr": "'"http://$VP_NAMESPACE-vault$i:8200"'", "api_addr": "'"http://$VP_NAMESPACE-vault$i:8200"'"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
+    echo
+  fi
+done
+
+# Launch the requested number of consul servers
+for (( i=2; i<=$VP_CONSUL_CLUSTER_SIZE; i++ ))
+do
+  if [ $(docker ps -q -f name=${VP_NAMESPACE}-consul${i}) ]; then
+    echo "Scaling Consul: Server #$i exists"
+    echo
+  else
+    echo "Scaling Consul: Launching server #$i"
+    docker run -d -P --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-consul${i} consul agent -server -retry-join=${VP_NAMESPACE}-consul1 -client='0.0.0.0' -bind='{{ GetInterfaceIP "eth0" }}' -ui
+    echo
   fi
 done
 
@@ -68,7 +87,7 @@ if [ ${VP_AUTO_INIT} == "true" ]; then
 
   # Fetch the local port
   vp_vault1_local_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8200/tcp") 0).HostPort}}' ${VP_NAMESPACE}-vault1)
-  curl --request PUT  -H "Content-Type: application/json" -d "{\"secret_shares\":$vp_vault_shares, \"secret_threshold\":$vp_vault_threshold}" http://127.0.0.1:${vp_vault1_local_port}/v1/sys/init > ${vault_init_dump_path}
+  curl --request PUT  -H "Content-Type: application/json" -d "{\"secret_shares\":$vp_vault_shares, \"secret_threshold\":$vp_vault_threshold}" http://127.0.0.1:${vp_vault1_local_port}/v1/sys/init > ${vault_init_dump_path} 2>/dev/null
 
   # Unseal all Vault instances
   containers=$(docker ps --filter name=${VP_NAMESPACE}-vault | awk '{if(NR>1) print $NF}')
@@ -79,25 +98,20 @@ if [ ${VP_AUTO_INIT} == "true" ]; then
 
 fi
 
-# Launch the requested number of consul servers
-for (( i=2; i<=$VP_CONSUL_CLUSTER_SIZE; i++ ))
-do
-  if [ $(docker ps -q -f name=${VP_NAMESPACE}-consul${i}) ]; then
-    echo "Scaling Consul: Server #$i exists"
-  else
-    echo "Scaling Consul: Launching server #$i"
-    docker run -d --name ${VP_NAMESPACE}-consul${i} --network ${VP_NAMESPACE} -e CONSUL_BIND_INTERFACE=eth0 consul agent -dev -join=${VP_NAMESPACE}-consul1
-  fi
-done
-
+echo
 echo "Vault Playground Test Environment Deployed"
-echo "Consul Status:"
-docker exec ${VP_NAMESPACE}-consul1 consul members
+echo
 
 echo "Vault Status:"
 
 if [ ${VP_AUTO_INIT} == "true" ]; then
-  docker exec ${VP_NAMESPACE}-vault1 vault status
+  for (( i=1; i<=$VP_VAULT_CLUSTER_SIZE; i++ ))
+  do
+    echo "Vault #$i"
+    docker exec ${VP_NAMESPACE}-vault${i} vault status
+    echo
+  done
+
   echo "Vault Initialization information dumped to: ${vault_init_dump_path}"
   echo "Root Token:"
   jq -r '.root_token' ${vault_init_dump_path}
@@ -105,7 +119,22 @@ else
   echo "Auto initialization of Vault was disabled... no status to report."
 fi
 
+echo
 echo "Vault is now running at:"
 docker ps -f name=${VP_NAMESPACE}-vault --format "{{.Names}}: http://{{printf \"%.13s\" .Ports}}"
 
+echo
+echo "Consul is running at:"
+
+for (( i=1; i<=${VP_CONSUL_CLUSTER_SIZE}; i++ ))
+do
+echo "http://127.0.0.1:$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8500/tcp") 0).HostPort}}' ${VP_NAMESPACE}-consul${i})"
+done
+
+echo
+echo "Consul Status:"
+docker exec ${VP_NAMESPACE}-consul1 consul members
+
+echo
 echo "Set your host's VAULT_ADDR environment variable to communicate directly with it using the Vault CLI."
+echo
