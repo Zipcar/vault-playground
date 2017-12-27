@@ -2,7 +2,7 @@
 
 source aserta
 
-echo "Make help should give information about every task in the Makefile"
+echo "Running make help should give information about every task in the Makefile"
 assert_str_equals    $(grep -c [^PHONY+\"]: ../Makefile) $(cd ../ && exec make help | wc -l)
 
 assert_end "make help"
