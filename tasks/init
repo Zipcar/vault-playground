@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vault Playground V.2.1.0 init
+# Vault Playground V2.1.1 init
 #
 # This script creates a dedicated docker network (called vp) and spins up the configured number of Vault and Consul servers.
 # By default this also initializes and unseals Vault automatically so you can use it immediately. When the script completes

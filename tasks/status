@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Vault Playground V2.1.1 status
+#
+# This is a helper task that makes a call to docker ps with relevant filters applied
+#
+
 : "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 
 if [ ! $(command -v docker) ]; then

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Vault Playground V.2.1.0 creds
+# Vault Playground V2.1.1 creds
 #
 # This is a helper task that looks in the cache for any initialization dumps from the currently running Vault instance
 # and outputs them to the screen.

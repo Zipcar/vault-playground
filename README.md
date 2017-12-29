@@ -1,4 +1,4 @@
-# Vault Playground V.2.1.0
+# Vault Playground V2.1.1
 
 This repo is meant to make it easier for developers, operators, and CI servers to work locally with a production-like Vault environment.
 The Makefile contained in this repository will allow users to spin up (by default) a Consul cluster with 3 nodes, and 2 Vault servers running

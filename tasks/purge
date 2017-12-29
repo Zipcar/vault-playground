@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Vault Playground V.2.1.0 purge
+# Vault Playground V2.1.1 purge
 #
 # This script deletes all cached credentials and snapshots by removing the $HOME/.vault-playground directory
 #
