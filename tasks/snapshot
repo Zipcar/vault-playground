@@ -45,6 +45,6 @@ fi
 
 snap_name=${short_vault_id}${VP_SNAPSHOT_NAME}.tgz
 
-curl ${VP_CONSUL_TARGET}/v1/snapshot?dc=${VP_CONSUL_DATACENTER} -o ${vp_snapshot_cache}/${snap_name}
+curl ${VP_CONSUL_TARGET}/v1/snapshot?dc=${VP_CONSUL_DATACENTER} -o ${vp_snapshot_cache}/${snap_name} 2>/dev/null
 
 echo "Wrote snapshot to $vp_snapshot_cache/$snap_name"
