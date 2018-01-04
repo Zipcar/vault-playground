@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Vault Playground V2.1.1 init
 #
-# This script creates a dedicated docker network (called vp) and spins up the configured number of Vault and Consul servers.
-# By default this also initializes and unseals Vault automatically so you can use it immediately. When the script completes
-# it will output the addresses where Consul and Vault can be reached locally
+# This script creates a dedicated docker network (called vp) and spins up the configured number of Vault servers and a
+# local DynamoDB instance to serve as their data store.
+#
+# By default this script initializes and unseals Vault automatically so you can use it immediately. When the script completes
+# it will output the addresses where Vault can be reached locally
 #
 # This file is meant to be used for local testing and development. The flow and architecture of this setup is meant to
 # mirror production, but certain behaviors have been added for developer convenience that would be inappropriate in a
@@ -13,12 +15,17 @@
 vp_init_cache=$HOME/.vault-playground/init_dumps
 vp_vault_shares=5
 vp_vault_threshold=3
+local_dynamodb_region=local
 
 # Environment variables needed by this script defaulted for local use
 : "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 : "${VP_AUTO_INIT:=true}" # If true, after launching Vault also runs init, caches the resulting keys, and automatically unseals Vault.
 : "${VP_VAULT_CLUSTER_SIZE:=2}" # The script will launch this many Vault nodes clustered in HA mode.
-: "${VP_CONSUL_CLUSTER_SIZE:=3}" # How many Consul servers do you need?
+: "${VP_AWS_ACCESS_KEY:=$local_dynamodb_region}" # Optionally set to valid creds if you want to connect to the real DynamoDB instead of one running locally
+: "${VP_AWS_SECRET_KEY:=$local_dynamodb_region}" # Optionally set to valid creds if you want to connect to the real DynamoDB instead of one running locally
+: "${VP_DYNAMODB_REGION:=$local_dynamodb_region}" # If set to local this will create a local DynamoDB instance. Otherwise this will cause the script to call out to AWS
+: "${VP_DYNAMODB_ENDPOINT:=}" # Optionally set to a valid DynamoDB endpoint, if left unset will be set to the local container or valid AWS endpoint depending on the value of VP_DYNAMODB_REGION
+: "${VP_DYNAMODB_TABLE:=vault-playground}" # The name of the DynamoDB table vault should point to or create
 
 if [ $(docker network ls -f name=${VP_NAMESPACE} -q) ]; then
   echo "Looks like there's currently some vault playground infrastructure running in Docker's $VP_NAMESPACE network, try running destroy first."
@@ -45,13 +52,23 @@ mkdir -p ${vp_init_cache}
 # Create Docker network for testing
 docker network create --driver bridge ${VP_NAMESPACE} >/dev/null 2>&1 || echo "Can't setup Docker network $VP_NAMESPACE"
 
-echo
-echo "Spin up initial Consul server:"
-# Spin up consul to back vault and then spin up vault.
-docker run -d -P --network ${VP_NAMESPACE} -e CONSUL_BIND_INTERFACE=eth0 --name ${VP_NAMESPACE}-consul1 consul
-echo
 
-sleep 2s
+
+# If no endpoint was passed in, set create a local instance
+if [ "${VP_DYNAMODB_REGION}" == "${local_dynamodb_region}" ]; then
+  echo
+  echo "Spin up local DynamoDB:"
+  # Spin up a Docker container running the Local DynamoDB binary
+  docker run -d -P --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-dynamodb dwmkerr/dynamodb -sharedDb
+  echo
+
+  sleep 4s
+  VP_DYNAMODB_ENDPOINT=http://${VP_NAMESPACE}-dynamodb:8000
+else
+  echo
+  echo "DynamoDB endpoint passed in, attempting to contact $VP_DYNAMODB_ENDPOINT with the supplied VP_AWS_ACCESS_KEY and VP_AWS_SECRET_KEY credentials"
+  echo
+fi
 
 # Launch the requested number of Vault servers
 for (( i=1; i<=$VP_VAULT_CLUSTER_SIZE; i++ ))
@@ -60,20 +77,7 @@ do
   if [ $(docker ps -q -f name=${VP_NAMESPACE}-vault${i}) ]; then
     echo "  Server #$i already exists"
   else
-    docker run -d -P --cap-add=IPC_LOCK --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-vault${i} -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"consul": {"path": "vault/", "check_timeout": "5s", "max_parallel": "128", "address": "'"http://$VP_NAMESPACE-consul1:8500"'", "cluster_addr": "'"http://$VP_NAMESPACE-vault$i:8200"'", "api_addr": "'"http://$VP_NAMESPACE-vault$i:8200"'"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
-    echo
-  fi
-done
-
-# Launch the requested number of consul servers
-for (( i=2; i<=$VP_CONSUL_CLUSTER_SIZE; i++ ))
-do
-  if [ $(docker ps -q -f name=${VP_NAMESPACE}-consul${i}) ]; then
-    echo "Scaling Consul: Server #$i exists"
-    echo
-  else
-    echo "Scaling Consul: Launching server #$i"
-    docker run -d -P --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-consul${i} consul agent -server -retry-join=${VP_NAMESPACE}-consul1 -client='0.0.0.0' -bind='{{ GetInterfaceIP "eth0" }}' -ui
+    docker run -d -P --cap-add=IPC_LOCK --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-vault${i} -e AWS_SECRET_ACCESS_KEY=${VP_AWS_SECRET_KEY} -e AWS_ACCESS_KEY_ID=${VP_AWS_ACCESS_KEY} -e AWS_DEFAULT_REGION=${VP_DYNAMODB_REGION} -e AWS_DYNAMODB_ENDPOINT=${VP_DYNAMODB_ENDPOINT} -e AWS_DYNAMODB_TABLE=${VP_DYNAMODB_TABLE} -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"dynamodb": {"ha_enabled": "true", "redirect_addr":"'"http://$VP_NAMESPACE-vault$i:8200"'"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
     echo
   fi
 done
@@ -87,20 +91,31 @@ if [ ${VP_AUTO_INIT} == "true" ]; then
 
   # Fetch the local port
   vp_vault1_local_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8200/tcp") 0).HostPort}}' ${VP_NAMESPACE}-vault1)
-  curl --request PUT  -H "Content-Type: application/json" -d "{\"secret_shares\":$vp_vault_shares, \"secret_threshold\":$vp_vault_threshold}" http://127.0.0.1:${vp_vault1_local_port}/v1/sys/init > ${vault_init_dump_path} 2>/dev/null
 
-  # Unseal all Vault instances
-  containers=$(docker ps --filter name=${VP_NAMESPACE}-vault | awk '{if(NR>1) print $NF}')
-  for container in ${containers}
-  do
-    jq -r '.keys[]' ${vault_init_dump_path} | xargs -I % docker exec ${container} vault unseal %
-  done
+  if [ $(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${vp_vault1_local_port}/v1/sys/health) == 501 ]; then
+    curl --request PUT  -H "Content-Type: application/json" -d "{\"secret_shares\":$vp_vault_shares, \"secret_threshold\":$vp_vault_threshold}" http://127.0.0.1:${vp_vault1_local_port}/v1/sys/init > ${vault_init_dump_path} 2>/dev/null
 
+    # Unseal all Vault instances
+    containers=$(docker ps --filter name=${VP_NAMESPACE}-vault | awk '{if(NR>1) print $NF}')
+    for container in ${containers}
+    do
+      jq -r '.keys[]' ${vault_init_dump_path} | xargs -I % docker exec ${container} vault unseal %
+    done
+
+    echo "Vault Initialization information dumped to: ${vault_init_dump_path}"
+    echo "Root Token:"
+    jq -r '.root_token' ${vault_init_dump_path}
+
+  else
+    echo "Looks like the storage backend you're pointed at was already initialized. Hope you've got the keys!"
+  fi
 fi
 
 echo
-echo "Vault Playground Test Environment Deployed"
+echo "Vault Playground Test Environment Deployed..."
 echo
+
+sleep 2s
 
 echo "Vault Status:"
 
@@ -112,9 +127,7 @@ if [ ${VP_AUTO_INIT} == "true" ]; then
     echo
   done
 
-  echo "Vault Initialization information dumped to: ${vault_init_dump_path}"
-  echo "Root Token:"
-  jq -r '.root_token' ${vault_init_dump_path}
+
 else
   echo "Auto initialization of Vault was disabled... no status to report."
 fi
@@ -124,17 +137,9 @@ echo "Vault is now running at:"
 docker ps -f name=${VP_NAMESPACE}-vault --format "{{.Names}}: http://{{printf \"%.13s\" .Ports}}"
 
 echo
-echo "Consul is running at:"
-
-for (( i=1; i<=${VP_CONSUL_CLUSTER_SIZE}; i++ ))
-do
-echo "http://127.0.0.1:$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8500/tcp") 0).HostPort}}' ${VP_NAMESPACE}-consul${i})"
-done
-
-echo
-echo "Consul Status:"
-docker exec ${VP_NAMESPACE}-consul1 consul members
-
-echo
-echo "Set your host's VAULT_ADDR environment variable to communicate directly with it using the Vault CLI."
-echo
+echo "There are two ways to communicate with Vault"
+echo "Use Docker exec: "
+echo "   docker exec $VP_NAMESPACE-vault1 vault status"
+echo "or set your host's VAULT_ADDR environment variable to communicate directly using the Vault CLI."
+echo "   export VAULT_ADDR=\$(make vault-leader)"
+echo "Note that if Vault is still sealed there will be no leader and make vault-leader will error"

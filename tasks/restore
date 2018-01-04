@@ -14,17 +14,25 @@
 vp_init_cache=$HOME/.vault-playground/init_dumps
 vp_snapshot_cache=$HOME/.vault-playground/snapshots
 
-: "${VP_CONSUL_TARGET:=}"
+default_dynamodb_region=local
+
+: "${DYNAMODUMP_VERSION:=v1.1.1}"
+: "${DYNAMODUMP_REQUIREMENTS:=/tmp/dynamodump_requirements.txt}"
+: "${DYNAMODUMP_SCRIPT:=/tmp/dynamodump.py}"
+
+: "${VP_DYNAMODB_REGION:=$default_dynamodb_region}"
+
 : "${VP_VAULT_TARGETS:=}"
 : "${VP_SNAPSHOT:=}"
 : "${VP_INIT_DUMP:=}"
+: "${VP_DYNAMODB_RESTORE_NAME:=vault-playground}"
 
 vault_targets=(${VP_VAULT_TARGETS});
 
-if [ -z "${VP_CONSUL_TARGET}" ] && [ $(docker network ls -f name=${VP_NAMESPACE} -q) ]; then
+if [ "${VP_DYNAMODB_REGION}" == "${default_dynamodb_region}" ] && [ $(docker network ls -f name=${VP_NAMESPACE} -q) ]; then
   echo "Looks like you're trying to run a local restore but there's currently some Vault Playground infrastructure"
-  echo "running in Docker's $VP_NAMESPACE network. Before running restore please run destroy. DO NOT RUN PURGE."
-  echo "You can also restore to a remote Consul server by passing in VP_CONSUL_TARGET"
+  echo "running in Docker's $VP_NAMESPACE network. Before running restore please run destroy or pass in a new VP_NAMESPACE."
+  echo "You can also restore to a remote DynamoDB table by passing in VP_DYNAMODB_REGION,  relevant AWS credentials, and optionally VP_DYNAMODB_RESTORE_NAME ."
   exit 0
 fi
 
@@ -32,6 +40,28 @@ if [ ! -d "${vp_snapshot_cache}" ] && [ ! ${VP_SNAPSHOT} ]; then
   echo "No snapshots available in snapshot cache: $vp_snapshot_cache, or passed in via VP_SNAPSHOT."
   echo "Have you taken any snapshots?"
   exit 0
+fi
+
+# Check if pip is installed if it is, then we check if our boto deps are met, if not we fetch the latest deps from
+# the local filesystem or GitHub and use pip to install them.
+if [ ! $(command -v pip) ]; then
+  echo -e "\npip, the python package manager was not found! This machine needs boto and boto3 installed with pip in order to take a snapshot!\n"
+else
+  boto_installed=$(pip show boto 2>/dev/null)
+  boto3_installed=$(pip show boto3 2>/dev/null)
+  if [ -z "${boto_installed}" ] && [ -z "${boto3_installed}" ]; then
+    echo "Known requirements boto and boto3 do not seem to be installed, fetching current requirements..."
+    if [ ! -f "${DYNAMODUMP_REQUIREMENTS}" ]; then
+      echo "Dynamodump not installed, fetching and installing prerequisites"
+      curl https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/requirements.txt 2>/dev/null > ${DYNAMODUMP_REQUIREMENTS}
+    fi
+    pip install -r ${DYNAMODUMP_REQUIREMENTS} 2>/dev/null
+  fi
+fi
+
+if [ ! -f "${DYNAMODUMP_SCRIPT}" ]; then
+  echo "Did not detect DynamoDump as installed, fetching..."
+  curl https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/dynamodump.py 2>/dev/null > ${DYNAMODUMP_SCRIPT}
 fi
 
 if [ ! $(command -v docker) ]; then
@@ -70,16 +100,22 @@ else
   done
 fi
 
+# The snapshot's folder contains a single directory named after the dynamodb table
+dynamodb_table_name=$(basename $(ls -d $snapshot_path/*|head -n 1))
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Only initialize an environment if we're working locally and an external Consul node was not targeted
-if [ -z "${VP_CONSUL_TARGET}" ]; then
+if [ "${VP_DYNAMODB_REGION}" == "${default_dynamodb_region}" ]; then
+  echo "Restoring the $dynamodb_table_name table on a local DynamoDB instance..."
   VP_AUTO_INIT=false ${DIR}/init
-  VP_CONSUL_TARGET=http://127.0.0.1:$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8500/tcp") 0).HostPort}}' ${VP_NAMESPACE}-consul1)
+  local_dynamodb_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8000/tcp") 0).HostPort}}' ${VP_NAMESPACE}-dynamodb)
+  python ${DYNAMODUMP_SCRIPT} -m restore -r ${VP_DYNAMODB_REGION} -s ${dynamodb_table_name} -d ${VP_DYNAMODB_RESTORE_NAME} --dumpPath ${snapshot_path} --host localhost --port ${local_dynamodb_port} --accessKey ${default_dynamodb_region} --secretKey ${default_dynamodb_region}
+else
+  echo "Restoring the $dynamodb_table_name table on AWS DynamoDB..."
+  python ${DYNAMODUMP_SCRIPT} -m restore -r ${VP_DYNAMODB_REGION} -s ${dynamodb_table_name}  -d ${VP_DYNAMODB_RESTORE_NAME} --dumpPath ${snapshot_path}
 fi
 
-curl --request PUT --data-binary @${snapshot_path} ${VP_CONSUL_TARGET}/v1/snapshot
-
+# Find any Vault init dumps that may be available and try to unseal Vault
 declare snapshot_init_dump
 
 # This short ID will be valid for local Docker inits only
@@ -90,8 +126,10 @@ if [ -e "${vp_init_cache}/${vault_short_id}.json" ]; then
 elif [ ${VP_INIT_DUMP} ]; then
   snapshot_init_dump=${VP_INIT_DUMP}
 else
+  echo
   echo "A Vault initialization key dump was not passed in with VP_INIT_DUMP or found in the local cache $vp_init_cache"
   echo "Vault will need to be manually unsealed. Hope you've got the keys!"
+  echo
 fi
 
 
@@ -115,7 +153,9 @@ if [ ${snapshot_init_dump} ]; then
   new_vault_short_id=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)
   new_init_dump_path=${vp_init_cache}/${new_vault_short_id}.json
   cp ${snapshot_init_dump} ${new_init_dump_path}
+  echo
   echo "Vault Initialization information dumped to: $new_init_dump_path"
   echo "Root Token:"
   jq -r '.root_token' ${new_init_dump_path}
+  echo
 fi
