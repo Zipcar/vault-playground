@@ -1,4 +1,4 @@
-# Vault Playground V2.1.1 Makefile
+# Vault Playground V3.0.0 Makefile
 
 # Help Helper matches comments at the start of the task block so make help gives users information about each task
 .PHONY: help
@@ -14,7 +14,7 @@ destroy: ## Destroy local Docker instances and their Docker network
 	@cd tasks && ./destroy
 
 .PHONY: snapshot
-snapshot: ## Backup the state of Vault by taking a snapshot of Consul and storing it in the local cache
+snapshot: ## Backup the state of Vault by taking a backup of DynamoDB
 	@cd tasks && ./snapshot
 
 .PHONY: purge
@@ -22,11 +22,11 @@ purge: ## Delete the local cache of snapshots and initialization keys
 	@cd tasks && ./purge
 
 .PHONY: restore
-restore: ## Restore previous Vault state by restoring a Consul snapshot
+restore: ## Restore previous Vault state by restoring a DynamoDB backup
 	@cd tasks && ./restore
 
 .PHONY: creds
-creds: ## Shows the root token and unseal keys for the currently running Vault instance cached
+creds: ## Shows the root token and unseal keys for the currently running Vault instance if cached
 	@cd tasks && ./creds
 
 .PHONY: status
