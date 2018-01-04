@@ -77,7 +77,7 @@ do
   if [ $(docker ps -q -f name=${VP_NAMESPACE}-vault${i}) ]; then
     echo "  Server #$i already exists"
   else
-    docker run -d -P --cap-add=IPC_LOCK --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-vault${i} -e AWS_SECRET_ACCESS_KEY=${VP_AWS_SECRET_KEY} -e AWS_ACCESS_KEY_ID=${VP_AWS_ACCESS_KEY} -e AWS_DEFAULT_REGION=${VP_DYNAMODB_REGION} -e AWS_DYNAMODB_ENDPOINT=${VP_DYNAMODB_ENDPOINT} -e AWS_DYNAMODB_TABLE=${VP_DYNAMODB_TABLE} -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"dynamodb": {"ha_enabled": "true", "redirect_addr":"'"http://$VP_NAMESPACE-vault$i:8200"'"}}, "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
+    docker run -d -P --cap-add=IPC_LOCK --network ${VP_NAMESPACE} --name ${VP_NAMESPACE}-vault${i} -e SKIP_SETCAP=true -e AWS_SECRET_ACCESS_KEY=${VP_AWS_SECRET_KEY} -e AWS_ACCESS_KEY_ID=${VP_AWS_ACCESS_KEY} -e AWS_DEFAULT_REGION=${VP_DYNAMODB_REGION} -e AWS_DYNAMODB_ENDPOINT=${VP_DYNAMODB_ENDPOINT} -e AWS_DYNAMODB_TABLE=${VP_DYNAMODB_TABLE} -e VAULT_ADDR=http://127.0.0.1:8200 -e 'VAULT_LOCAL_CONFIG={"backend": {"dynamodb": {"ha_enabled": "true", "redirect_addr":"'"http://$VP_NAMESPACE-vault$i:8200"'"}}, "disable_mlock": "true", "listener": { "tcp": { "address":"0.0.0.0:8200", "tls_disable":1}}, "default_lease_ttl": "168h", "max_lease_ttl": "720h"}' vault server
     echo
   fi
 done
