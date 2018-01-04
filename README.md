@@ -1,4 +1,4 @@
-# Vault Playground V2.1.1
+# Vault Playground V3.0.0
 
 This repo is meant to make it easier for developers, operators, and CI servers to work locally with a production-like Vault environment.
 The Makefile contained in this repository will allow users to spin up (by default) a local DynamoDB server, and 2 Vault servers running
