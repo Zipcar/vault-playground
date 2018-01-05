@@ -172,6 +172,18 @@ AWS_PROFILE=demo VP_DYNAMODB_REGION=us-east-1 VP_DYNAMODB_TABLE=vault-playground
 
 If restoring to AWS it will not spin up any local Vault servers.
 
+### snapshots
+
+This command lists all available snapshots in tabular format and whether creds are cached for it.
+
+```text
+ Snapshot                                | Table                    | Creds
+----------------------------------------------------------------------------
+ 7d2ab358e83a-fhwdgads                   | vault-playground         |       
+ ed4bf75389b1-2018-01-04-14-52-36        | vault-playground         |   *    
+ f660badd4c71-2018-01-04-14-04-43        | vault-playground         |   *    
+```
+
 ### creds
 
 **Environment**
