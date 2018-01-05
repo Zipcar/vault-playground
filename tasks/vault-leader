@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Vault Playground V3.0.0 vault-leader
+# Vault Playground V3.0.1 vault-leader
 #
 # This script outputs the current leader and the port it's exporting on the host. Useful for setting the VAULT_ADDR
 # environment variable VAULT_ADDR=$(make vault-leader)

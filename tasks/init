@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vault Playground V3.0.0 init
+# Vault Playground V3.0.1 init
 #
 # This script creates a dedicated docker network (called vp) and spins up the configured number of Vault servers and a
 # local DynamoDB instance to serve as their data store.

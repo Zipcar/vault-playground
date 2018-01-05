@@ -1,4 +1,4 @@
-# Vault Playground V3.0.0 Makefile
+# Vault Playground V3.0.1 Makefile
 
 # Help Helper matches comments at the start of the task block so make help gives users information about each task
 .PHONY: help
