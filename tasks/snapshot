@@ -35,13 +35,13 @@ if [ "${VP_DYNAMODB_REGION}" == "${local_dynamodb_region}" ]; then
   echo "Snapshotting the $VP_DYNAMODB_TABLE table on the local DynamoDB instance..."
   docker_vault_id=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)
   snap_name=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)-${VP_SNAPSHOT_NAME}
-  docker run --rm -i --network ${VP_NAMESPACE} -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+  docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
 dynamodump -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name} --host vp-dynamodb --port 8000 --accessKey ${VP_DYNAMODB_REGION} --secretKey ${VP_DYNAMODB_REGION}
 EOF
 else
   # auth must occur with expected AWS environment variables, IAM role, etc
   snap_name=${VP_DYNAMODB_REGION}-${VP_SNAPSHOT_NAME}
-  docker run --rm -i --network ${VP_NAMESPACE} -v $HOME/.aws:/root/.aws -e AWS_PROFILE=${AWS_PROFILE} -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+  docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v $HOME/.aws:/root/.aws -e AWS_PROFILE=${AWS_PROFILE} -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
 dynamodump -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name}
 EOF
 fi
