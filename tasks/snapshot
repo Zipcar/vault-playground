@@ -6,7 +6,6 @@
 # timestamp but also supports vanity naming via an environment variable. If used against a real AWS hosted instance of DynamoDB
 # must pass AWS_PROFILE, or AWS_SECRET_ACCESS_KEY and AWS_ACCESS_KEY_ID.
 #
-VP_VERSION=v3.0.1
 
 : "${VP_NAMESPACE:=vp}" # Namespace for the local Vault playground, used for network and container names
 
@@ -16,10 +15,6 @@ vp_snapshot_cache=$HOME/.vault-playground/snapshots
 timestamp=$(date +%Y-%m-%d-%H-%M-%S)
 local_dynamodb_region=local
 default_dynamodb_table_name=vault-playground
-
-: "${DYNAMODUMP_VERSION:=v1.1.1}"
-: "${DYNAMODUMP_REQUIREMENTS:=/tmp/dynamodump_requirements.txt}"
-: "${DYNAMODUMP_SCRIPT:=/tmp/dynamodump.py}"
 
 : "${VP_DYNAMODB_REGION:=$local_dynamodb_region}"
 : "${VP_DYNAMODB_TABLE:=$default_dynamodb_table_name}"
@@ -40,22 +35,15 @@ if [ "${VP_DYNAMODB_REGION}" == "${local_dynamodb_region}" ]; then
   echo "Snapshotting the $VP_DYNAMODB_TABLE table on the local DynamoDB instance..."
   docker_vault_id=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)
   snap_name=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)-${VP_SNAPSHOT_NAME}
-  docker run -i --network ${VP_NAMESPACE} -v $PWD:/mnt/vp-tasks -v ${vp_snapshot_cache}:/mnt/snapshots python:2.7.14-alpine3.7 sh -s <<EOF
-wget -O ${DYNAMODUMP_REQUIREMENTS} https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/requirements.txt
-pip install -r ${DYNAMODUMP_REQUIREMENTS}
-wget -O ${DYNAMODUMP_SCRIPT} https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/dynamodump.py
-python ${DYNAMODUMP_SCRIPT} -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name} --host vp-dynamodb --port 8000 --accessKey ${VP_DYNAMODB_REGION} --secretKey ${VP_DYNAMODB_REGION}
+  docker run --rm -i --network ${VP_NAMESPACE} -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+dynamodump -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name} --host vp-dynamodb --port 8000 --accessKey ${VP_DYNAMODB_REGION} --secretKey ${VP_DYNAMODB_REGION}
 EOF
 else
+  # auth must occur with expected AWS environment variables, IAM role, etc
   snap_name=${VP_DYNAMODB_REGION}-${VP_SNAPSHOT_NAME}
-  docker run -i --network ${VP_NAMESPACE} -v $HOME/.aws:/root/.aws -v $PWD:/mnt/vp-tasks -v ${vp_snapshot_cache}:/mnt/snapshots python:2.7.14-alpine3.7 sh -s <<EOF
-wget -O ${DYNAMODUMP_REQUIREMENTS} https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/requirements.txt
-pip install -r ${DYNAMODUMP_REQUIREMENTS}
-wget -O ${DYNAMODUMP_SCRIPT} https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/dynamodump.py
-python ${DYNAMODUMP_SCRIPT} -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name}
+  docker run --rm -i --network ${VP_NAMESPACE} -v $HOME/.aws:/root/.aws -e AWS_PROFILE=${AWS_PROFILE} -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+dynamodump -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name}
 EOF
-  # auth must occur with expected AWS environment variables, IAM role, etc, etc
-
 fi
 
 echo "Wrote snapshot to $vp_snapshot_cache/$snap_name"
