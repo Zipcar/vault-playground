@@ -49,6 +49,7 @@ help                           Displays information about available make tasks
 init                           Spin up local Docker instances for all dependencies on a dedicated Docker network
 destroy                        Destroy local Docker instances and their Docker network
 snapshot                       Backup the state of Vault by taking a backup of DynamoDB
+snapshots                      Lists all available snapshots in the cache and whether creds are cached for it
 purge                          Delete the local cache of snapshots and initialization keys
 restore                        Restore previous Vault state by restoring a DynamoDB backup
 creds                          Shows the root token and unseal keys for the currently running Vault instance cached
@@ -126,10 +127,7 @@ error message will inform the user that initialization cannot occur.
   - `VP_DYNAMODB_REGION` (local) The AWS Region to target DynamoDB in. Locally this doesn't matter, but Vault requires it be set.
   - `VP_DYNAMODB_TABLE` (vault-playground) The name of the table in DynamoDB to target or create
   - `VP_SNAPSHOT_NAME` (timestamp of the form: `%Y-%m-%d-%H-%M-%S`) Snapshots are named using the ID of the active Vault instance concatenated with this value. 
-  - `DYNAMODUMP_VERSION` (v1.1.1) This is the version of the Dynamo Dump script that will be used.
-  - `DYNAMODUMP_REQUIREMENTS` (/tmp/dynamodump_requirements.txt) This is where the requirements for Dynamo Dump will be read from or written to if they are not found.
-  - `DYNAMODUMP_SCRIPT` (/tmp/dynamodump.py) This is where the Dynamo Dump script will be run from, or written to if it cannot be found
-  - `AWS_PROFILE` or `AWS_SECRET_ACCESS_KEY` and `AWS_ACCESS_KEY_ID` must be passed when snapshotting live DynamoDB instances in AWS.
+  - `AWS_PROFILE` must be passed when snapshotting tables in AWS.
   
 This script creates a snapshot in the local cache (`$HOME/.vault-playground/snapshots`) that by default is named with a timestamp.
 Generate a custom named snapshot with an environment variable: `VP_SNAPSHOT_NAME=the-one-with-postgres-secrets make snapshot`
@@ -148,13 +146,10 @@ AWS_PROFILE=demo VP_DYNAMODB_REGION=us-east-1 VP_DYNAMODB_TABLE=vault-playground
   - `VP_SNAPSHOT` (empty string) Path to the Consul snapshot to restore. If this is blank, restore will list all the snapshots in its cache (`$HOME/.vault-playground/snapshots`).
   - `VP_DYNAMODB_REGION` (local) The AWS Region to target DynamoDB in. Locally this doesn't matter.
   - `VP_INIT_DUMP` (empty string) Path to a file containing the output of the Vault initialization command. If this file doesn't exist, restore will check it's cache (`$HOME/.vault-playground/init_dumps`) if it finds nothing it will still restore the snapshot, but leave Vault sealed.
-  - `VP_CONSUL_TARGET` - (The Vault Playground Consul node) The Consul server that the snapshot should be restored to
   - `VP_VAULT_TARGETS` - (all running Vault Playground Vault containers) A space delimited list of Vault servers that should be contacted for unsealing if an init dump file was provided or existed in the cache.
   - `VP_DYNAMODB_RESTORE_NAME` (vault-playground) The name of the restored table.
-  - `DYNAMODUMP_VERSION` (v1.1.1) This is the version of the Dynamo Dump script that will be used.
-  - `DYNAMODUMP_REQUIREMENTS` (/tmp/dynamodump_requirements.txt) This is where the requirements for Dynamo Dump will be read from or written to if they are not found.
-  - `DYNAMODUMP_SCRIPT` (/tmp/dynamodump.py) This is where the Dynamo Dump script will be run from, or written to if it cannot be found
-  
+  - `AWS_PROFILE` must be passed when restoring a table to AWS.
+
 **Dependencies**
   - `init` If `VP_DYNAMODB_REGION` has not been overridden this script calls out to init, setting `VP_AUTO_INIT=false` so it can setup a clean cluster before running the restore.
   
