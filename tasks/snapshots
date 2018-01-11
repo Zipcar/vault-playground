@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+# Vault Playground V3.1 snapshots
+#
+# This script lists the cached snapshots and which have cached initialization dumps available for auto-unsealing
+#
+
+vp_init_cache=$HOME/.vault-playground/init_dumps
+vp_snapshot_cache=$HOME/.vault-playground/snapshots
+
+declare snapshot_path
+
+
+options=(${vp_snapshot_cache}/*)
+
+echo "----------------------------------------------------------------------------"
+echo "Snapshot Table Creds" | awk '{ printf " %-40s| %-25s| %-5s\n", $1, $2, $3}'
+echo "----------------------------------------------------------------------------"
+
+for snapshot_path in "${options[@]}" ; do
+  creds_available=""
+  basename=$(basename ${snapshot_path})
+
+  # This short ID will be valid for local Docker inits only
+  vault_short_id=$(basename ${snapshot_path} | cut -c1-12)
+
+  if [ -e "${vp_init_cache}/${vault_short_id}.json" ]; then
+    creds_available="*"
+  fi
+
+  table_name=$(basename $(ls -d ${snapshot_path}/*|head -n 1))
+
+  echo "$basename $table_name $creds_available" | awk '{ printf " %-40s| %-25s|   %-5s\n", $1, $2, $3}'
+done
+echo
