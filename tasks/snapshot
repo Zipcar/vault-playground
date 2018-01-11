@@ -16,43 +16,12 @@ timestamp=$(date +%Y-%m-%d-%H-%M-%S)
 local_dynamodb_region=local
 default_dynamodb_table_name=vault-playground
 
-: "${DYNAMODUMP_VERSION:=v1.1.1}"
-: "${DYNAMODUMP_REQUIREMENTS:=/tmp/dynamodump_requirements.txt}"
-: "${DYNAMODUMP_SCRIPT:=/tmp/dynamodump.py}"
-
 : "${VP_DYNAMODB_REGION:=$local_dynamodb_region}"
 : "${VP_DYNAMODB_TABLE:=$default_dynamodb_table_name}"
 : "${VP_SNAPSHOT_NAME:=$timestamp}"
 
-# Check if pip is installed if it is, then we check if our boto deps are met, if not we fetch the latest deps from
-# the local filesystem or GitHub and use pip to install them.
-if [ ! $(command -v pip) ]; then
-  echo -e "\npip, the python package manager was not found! This machine needs boto and boto3 installed with pip in order to take a snapshot!\n"
-else
-  boto_installed=$(pip show boto 2>/dev/null)
-  boto3_installed=$(pip show boto3 2>/dev/null)
-  if [ -z "${boto_installed}" ] && [ -z "${boto3_installed}" ]; then
-    echo "Known requirements boto and boto3 do not seem to be installed, fetching current requirements..."
-    if [ ! -f "${DYNAMODUMP_REQUIREMENTS}" ]; then
-      echo "Dynamodump not installed, fetching and installing prerequisites"
-      curl https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/requirements.txt 2>/dev/null > ${DYNAMODUMP_REQUIREMENTS}
-    fi
-    pip install -r ${DYNAMODUMP_REQUIREMENTS} 2>/dev/null
-  fi
-fi
-
-if [ ! -f "${DYNAMODUMP_SCRIPT}" ]; then
-  echo "Did not detect DynamoDump as installed, fetching..."
-  curl https://raw.githubusercontent.com/bchew/dynamodump/${DYNAMODUMP_VERSION}/dynamodump.py 2>/dev/null > ${DYNAMODUMP_SCRIPT}
-fi
-
 if [ ! $(command -v docker) ]; then
   echo -e "\ndocker not found! It must be installed before proceeding: https://www.docker.com/get-docker\n"
-  exit 1
-fi
-
-if [ ! $(command -v curl) ]; then
-  echo -e "\ncurl not found! It must be installed before proceeding: https://curl.haxx.se/\n"
   exit 1
 fi
 
@@ -66,14 +35,15 @@ if [ "${VP_DYNAMODB_REGION}" == "${local_dynamodb_region}" ]; then
   echo "Snapshotting the $VP_DYNAMODB_TABLE table on the local DynamoDB instance..."
   docker_vault_id=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)
   snap_name=$(docker ps -q -f name=${VP_NAMESPACE}-vault1)-${VP_SNAPSHOT_NAME}
-  local_dynamodb_host=localhost
-  local_dynamodb_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8000/tcp") 0).HostPort}}' ${VP_NAMESPACE}-dynamodb)
-  python ${DYNAMODUMP_SCRIPT} -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath ${vp_snapshot_cache}/${snap_name} --host ${local_dynamodb_host} --port ${local_dynamodb_port} --accessKey ${VP_DYNAMODB_REGION} --secretKey ${VP_DYNAMODB_REGION}
+  docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+dynamodump -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name} --host ${VP_NAMESPACE}-dynamodb --port 8000 --accessKey ${VP_DYNAMODB_REGION} --secretKey ${VP_DYNAMODB_REGION}
+EOF
 else
-  echo "Snapshotting the $VP_DYNAMODB_TABLE table on AWS DynamoDB..."
+  # auth must occur with expected AWS environment variables, IAM role, etc
   snap_name=${VP_DYNAMODB_REGION}-${VP_SNAPSHOT_NAME}
-  # auth must occur with expected AWS environment variables, IAM role, etc, etc
-  python ${DYNAMODUMP_SCRIPT} -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath ${vp_snapshot_cache}/${snap_name}
+  docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v $HOME/.aws:/root/.aws -e AWS_PROFILE=${AWS_PROFILE} -v ${vp_snapshot_cache}:/mnt/snapshots mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+dynamodump -m backup -r ${VP_DYNAMODB_REGION} -s ${VP_DYNAMODB_TABLE} --dumpPath /mnt/snapshots/${snap_name}
+EOF
 fi
 
 echo "Wrote snapshot to $vp_snapshot_cache/$snap_name"
