@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Vault Playground V3.0.1 restore
+# Vault Playground V3.1.0 restore
 #
 # Unless a snapshot file is specified this script will list all snapshots in its cache and prompt the user to select one.
 # Once the snapshot is restored the script will attempt to locate a valid initialization dump file in its cache if one
