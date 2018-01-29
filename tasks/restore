@@ -82,12 +82,12 @@ if [ "${VP_DYNAMODB_REGION}" == "${default_dynamodb_region}" ]; then
   echo "Restoring the $dynamodb_table_name table on a local DynamoDB instance..."
   VP_AUTO_INIT=false ${DIR}/init
   local_dynamodb_port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8000/tcp") 0).HostPort}}' ${VP_NAMESPACE}-dynamodb)
-  docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v ${snapshot_path}:${snapshot_path} mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+  docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v ${snapshot_path}:${snapshot_path} bchew/dynamodump:1.1.2 sh -s <<EOF
 dynamodump -m restore -r ${VP_DYNAMODB_REGION} -s ${dynamodb_table_name} -d ${VP_DYNAMODB_RESTORE_NAME} --dumpPath ${snapshot_path} --host ${VP_NAMESPACE}-dynamodb --port 8000 --accessKey ${default_dynamodb_region} --secretKey ${default_dynamodb_region}
 EOF
 else
   echo "Restoring the $dynamodb_table_name table on AWS DynamoDB..."
-    docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v $HOME/.aws:/root/.aws -e AWS_PROFILE=${AWS_PROFILE} -v ${snapshot_path}:${snapshot_path} mattsurabian/dynamodump:1.1.1 sh -s <<EOF
+    docker run --rm -i --network ${VP_NAMESPACE} -u $(id -u):$(id -g) -v $HOME/.aws:/root/.aws -e AWS_PROFILE=${AWS_PROFILE} -v ${snapshot_path}:${snapshot_path} bchew/dynamodump:1.1.2 sh -s <<EOF
 dynamodump -m restore -r ${VP_DYNAMODB_REGION} -s ${dynamodb_table_name}  -d ${VP_DYNAMODB_RESTORE_NAME} --dumpPath ${snapshot_path}
 EOF
 fi
