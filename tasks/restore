@@ -42,7 +42,7 @@ if [ ! $(command -v docker) ]; then
   exit 1
 fi
 
-if [[ "$(docker images -q brew/dynamodump 2> /dev/null)" == "" ]]; then
+if [[ "$(docker images -q bchew/dynamodump 2> /dev/null)" == "" ]]; then
   echo -e "Required bchew/dynamodump docker image does not exist.\n"
   docker pull bchew/dynamodump
 fi
