@@ -10,6 +10,10 @@ vp_snapshot_cache=$HOME/.vault-playground/snapshots
 
 declare snapshot_path
 
+if [ ! -d "$vp_snapshot_cache" ]; then
+  echo "Directory ${vp_snapshot_cache} does not exist. No snapshots available."
+  exit 1
+fi
 
 options=(${vp_snapshot_cache}/*)
 
