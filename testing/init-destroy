@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+source aserta
+
+export VP_NAMESPACE=self-test
+export VP_VAULT_CLUSTER_SIZE=2
+export VP_CONSUL_CLUSTER_SIZE=1
+
+cd ../
+
+echo "Ensure make init creates the correct number of servers"
+make init > /dev/null 2>&1
+echo "  #1 There should be 3 total servers"
+assert_str_equals $(docker ps -f network=self-test | wc -l) "4"
+
+echo "  #2 There should be 2 vault servers"
+assert_str_equals $(docker ps -f name=self-test-vault | wc -l) "3"
+
+echo "  #3 There should be 1 consul servers"
+assert_str_equals $(docker ps -f name=self-test-consul | wc -l) "2"
+
+# Make a control group of containers that should NOT be shut down with destroy
+VP_VAULT_CLUSTER_SIZE=1 VP_NAMESPACE=self-test-control make init > /dev/null 2>&1
+
+echo "Ensure make destroy removes what it should"
+echo "  #4 Make destroy should removes all servers in the specified namespace"
+make destroy > /dev/null 2>&1
+assert_str_equals $(docker ps -f network=self-test | wc -l) "1"
+
+echo "  #5 Make destroy should not remove containers that aren't in the specified namespace"
+assert_str_equals $(docker ps -f network=self-test-control | wc -l) "3"
+VP_NAMESPACE=self-test-control make destroy > /dev/null 2>&1
+
+assert_end "make init/destroy cycle"

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+cd testing
+
+./help
+./init-destroy
